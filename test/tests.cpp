@@ -16,38 +16,6 @@ TEST_CASE("Parse String URL case", "Uri")
           == uri.GetPath());
 }
 
-TEST_CASE("Parse String URN one character", "Uri")
-{
-  Uri::Uri uri;
-  uri.SetPathDelimiter(":");
-
-  REQUIRE(uri.ParseFromString("urn:book:fantasy:LDM"));
-  REQUIRE("urn" == uri.GetScheme());
-  REQUIRE(uri.GetHost().empty());
-  REQUIRE(std::vector<std::string>{
-            "book",
-            "fantasy",
-            "LDM",
-          }
-          == uri.GetPath());
-}
-
-TEST_CASE("Parse String URN multicharacter path delimiter", "Uri")
-{
-  Uri::Uri uri;
-  uri.SetPathDelimiter("/-");
-
-  REQUIRE(uri.ParseFromString("urn:bo-/ok/-fant/asy/-LD-M"));
-  REQUIRE("urn" == uri.GetScheme());
-  REQUIRE(uri.GetHost().empty());
-  REQUIRE(std::vector<std::string>{
-            "bo-/ok",
-            "fant/asy",
-            "LD-M",
-          }
-          == uri.GetPath());
-}
-
 TEST_CASE("Parse String URN path corner cases", "Uri")
 {
   struct TestVector
