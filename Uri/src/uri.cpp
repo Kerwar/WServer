@@ -37,7 +37,10 @@ bool Uri::ParseFromString(const std::string &uri_string)
   // "foo/" -> [foo, ""]
   // "/foo" -> ["", foo]
   impl_->path.clear();
-  if (!rest.empty()) {
+  if (rest == impl_->path_delimiter) {
+    impl_->path.emplace_back("");
+  }
+  else if (!rest.empty()) {
     for (;;) {
       auto path_delimiter = rest.find(impl_->path_delimiter);
       if (path_delimiter == std::string::npos) {
