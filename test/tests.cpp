@@ -1,14 +1,73 @@
+#include "../Uri/headers/uri.hpp"
 #include <catch2/catch.hpp>
 
-unsigned int Factorial(unsigned int number)// NOLINT(misc-no-recursion)
+TEST_CASE("Parse String URL case", "Uri")
 {
-  return number <= 1 ? number : Factorial(number - 1) * number;
+  Uri::Uri uri;
+
+  REQUIRE(uri.ParseFromString("https://www.example.com/foo/bar"));
+  REQUIRE("https" == uri.GetScheme());
+  REQUIRE("www.example.com" == uri.GetHost());
+  REQUIRE(std::vector<std::string>{
+            "",
+            "foo",
+            "bar",
+          }
+          == uri.GetPath());
 }
 
-TEST_CASE("Factorials are computed", "[factorial]")
+TEST_CASE("Parse String URN one character", "Uri")
 {
-  REQUIRE(Factorial(1) == 1);
-  REQUIRE(Factorial(2) == 2);
-  REQUIRE(Factorial(3) == 6);
-  REQUIRE(Factorial(10) == 3628800);
+  Uri::Uri uri;
+  uri.SetPathDelimiter(":");
+
+  REQUIRE(uri.ParseFromString("urn:book:fantasy:LDM"));
+  REQUIRE("urn" == uri.GetScheme());
+  REQUIRE(uri.GetHost().empty());
+  REQUIRE(std::vector<std::string>{
+            "book",
+            "fantasy",
+            "LDM",
+          }
+          == uri.GetPath());
+}
+
+TEST_CASE("Parse String URN multicharacter path delimiter", "Uri")
+{
+  Uri::Uri uri;
+  uri.SetPathDelimiter("/-");
+
+  REQUIRE(uri.ParseFromString("urn:bo-/ok/-fant/asy/-LD-M"));
+  REQUIRE("urn" == uri.GetScheme());
+  REQUIRE(uri.GetHost().empty());
+  REQUIRE(std::vector<std::string>{
+            "bo-/ok",
+            "fant/asy",
+            "LD-M",
+          }
+          == uri.GetPath());
+}
+
+TEST_CASE("Parse String URN path corner cases", "Uri")
+{
+  struct TestVector
+  {
+    std::string path_in;
+    std::vector<std::string> path_out;
+  };
+
+  const std::vector<TestVector> testVectors{
+    { "", {} },
+    { "/", { "" } },
+    { "/foo", { "", "foo" } },
+    { "foo/", { "foo", "" } },
+  };
+
+  for (const auto &testVector : testVectors) {
+
+    Uri::Uri uri;
+
+    REQUIRE(uri.ParseFromString(testVector.path_in));
+    REQUIRE(testVector.path_out == uri.GetPath());
+  }
 }
