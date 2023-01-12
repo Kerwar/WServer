@@ -1,6 +1,7 @@
 #ifndef URI_HPP
 #define URI_HPP
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -23,7 +24,8 @@ public:
   [[nodiscard]] std::string GetHost() const;
   [[nodiscard]] std::vector<std::string> GetPath() const;
 
-  bool SetPathDelimiter(const std::string &path_delimiter);
+  [[nodiscard]] bool HasPort() const;
+  [[nodiscard]] uint16_t GetPort() const;
 
 private:
   struct Implementation;
