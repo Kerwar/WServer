@@ -124,10 +124,6 @@ private:
 
   std::unique_ptr<Implementation> impl_;
 
-  std::string ParseScheme(const std::string &uri_string);
-  std::string ParseHost(const std::string &uri_string);
-  void ParsePath( std::string &URL);
-  void ParseQueryAndFragment( const std::string &uri_string);
 };
 }// namespace Uri
 

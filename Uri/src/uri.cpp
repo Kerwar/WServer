@@ -17,6 +17,76 @@ struct Uri::Implementation
   std::vector<std::string> path;
   std::string query;
   std::string fragment;
+
+  // Methods
+  std::string ParseScheme(const std::string &uri_string)
+  {
+    auto scheme_end = uri_string.find(':');
+
+    if (scheme_end == std::string::npos) {
+      scheme.clear();
+      return uri_string;
+    } else {
+      scheme = uri_string.substr(0, scheme_end);
+      return uri_string.substr(scheme_end + 3);
+    }
+  }
+
+  std::string ParseHost(const std::string &uri_string)
+  {
+    auto uri_after_scheme = uri_string;
+    host = uri_after_scheme;
+    return uri_after_scheme;
+  }
+
+  void ParsePath(std::string &URL)
+  {
+    // Parse Path
+    // "" -> []
+    // "/" -> [""]
+    // "foo/" -> [foo, ""]
+    // "/foo" -> ["", foo]
+    path.clear();
+    if (URL == "/") {
+      path.emplace_back("");
+    } else if (!URL.empty()) {
+      for (;;) {
+        auto path_delimiter = URL.find('/');
+        if (path_delimiter == std::string::npos) {
+          path.push_back(URL);
+          break;
+        } else {
+          path.emplace_back(
+            URL.begin(), URL.begin() + static_cast<int>(path_delimiter));
+          URL = URL.substr(path_delimiter + 1);
+        }
+      }
+    }
+  }
+
+  void ParseQueryAndFragment(const std::string &uri_string)
+  {
+    const auto query_delimiter = uri_string.find('?');
+
+    const auto fragment_delimiter = uri_string.find('#');
+
+    if (fragment_delimiter == std::string::npos) {
+      fragment.clear();
+      if (query_delimiter == std::string::npos) {
+        query.clear();
+      } else {
+        query = uri_string.substr(query_delimiter + 1);
+      }
+    } else {
+      fragment = uri_string.substr(fragment_delimiter + 1);
+      if (query_delimiter == std::string::npos) {
+        query.clear();
+      } else {
+        query = uri_string.substr(
+          query_delimiter + 1, fragment_delimiter - query_delimiter - 1);
+      }
+    }
+  }
 };
 
 Uri::~Uri() = default;
@@ -25,7 +95,7 @@ Uri::Uri() : impl_(new Implementation) {}
 
 bool Uri::ParseFromString(const std::string &uri_string)
 {
-  auto uri_after_scheme = ParseScheme(uri_string);
+  auto uri_after_scheme = impl_->ParseScheme(uri_string);
 
   impl_->has_port = false;
 
@@ -74,80 +144,13 @@ bool Uri::ParseFromString(const std::string &uri_string)
     authority = authority.substr(authority_end);
   }
 
-  ParsePath(path);
+  impl_->ParsePath(path);
 
-  if (!impl_->path.empty()) { ParseQueryAndFragment(impl_->path.back()); }
+  if (!impl_->path.empty()) {
+    impl_->ParseQueryAndFragment(impl_->path.back());
+  }
 
   return true;
-}
-
-std::string Uri::ParseScheme(const std::string &uri_string)
-{
-  auto scheme_end = uri_string.find(':');
-
-  if (scheme_end == std::string::npos) {
-    impl_->scheme.clear();
-    return uri_string;
-  } else {
-    impl_->scheme = uri_string.substr(0, scheme_end);
-    return uri_string.substr(scheme_end + 3);
-  }
-}
-
-std::string Uri::ParseHost(const std::string &uri_string)
-{
-  auto uri_after_scheme = uri_string;
-  impl_->host = uri_after_scheme;
-  return uri_after_scheme;
-}
-
-void Uri::ParsePath(std::string &URL)
-{
-  // Parse Path
-  // "" -> []
-  // "/" -> [""]
-  // "foo/" -> [foo, ""]
-  // "/foo" -> ["", foo]
-  impl_->path.clear();
-  if (URL == "/") {
-    impl_->path.emplace_back("");
-  } else if (!URL.empty()) {
-    for (;;) {
-      auto path_delimiter = URL.find('/');
-      if (path_delimiter == std::string::npos) {
-        impl_->path.push_back(URL);
-        break;
-      } else {
-        impl_->path.emplace_back(
-          URL.begin(), URL.begin() + static_cast<int>(path_delimiter));
-        URL = URL.substr(path_delimiter + 1);
-      }
-    }
-  }
-}
-
-void Uri::ParseQueryAndFragment(const std::string &uri_string)
-{
-  const auto query_delimiter = uri_string.find('?');
-
-  const auto fragment_delimiter = uri_string.find('#');
-
-  if (fragment_delimiter == std::string::npos) {
-    impl_->fragment.clear();
-    if (query_delimiter == std::string::npos) {
-      impl_->query.clear();
-    } else {
-      impl_->query = uri_string.substr(query_delimiter + 1);
-    }
-  } else {
-    impl_->fragment = uri_string.substr(fragment_delimiter + 1);
-    if (query_delimiter == std::string::npos) {
-      impl_->query.clear();
-    } else {
-      impl_->query = uri_string.substr(
-        query_delimiter + 1, fragment_delimiter - query_delimiter - 1);
-    }
-  }
 }
 
 std::string Uri::GetScheme() const { return impl_->scheme; }
