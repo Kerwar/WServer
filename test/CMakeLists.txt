@@ -35,25 +35,26 @@ target_link_libraries(catch_main PRIVATE myproject::project_options)
 # add_test(NAME cli.version_matches COMMAND intro --version)
 # set_tests_properties(cli.version_matches PROPERTIES PASS_REGULAR_EXPRESSION "${PROJECT_VERSION}")
 
-add_executable(tests tests.cpp)
-target_link_libraries(tests PRIVATE myproject::project_warnings myproject::project_options catch_main UriLib)
-
-# automatically discover tests that are defined in catch based test files you can modify the unittests. Set TEST_PREFIX
+add_executable(test_uri test_uri.cpp)
+target_link_libraries(test_uri PRIVATE catch_main UriLib) # myproject::project_warnings myproject::project_options catch_main UriLib)
+set_target_properties(test_uri PROPERTIES RUNTIME_OUTPUT_DIRECTORY_DEBUG ".." RUNTIME_OUTPUT_DIRECTORY_RELEASE "..")
+# automatically discover test that are defined in catch based test files you can modify the unittests. Set TEST_PREFIX
 # to whatever you want, or use different for different binaries
 catch_discover_tests(
-  tests
+  test_uri
   TEST_PREFIX
   "unittests."
-  REPORTER
-  xml
-  OUTPUT_DIR
-  .
-  OUTPUT_PREFIX
-  "unittests."
-  OUTPUT_SUFFIX
-  .xml)
+  # REPORTER
+  # xml
+  # OUTPUT_DIR
+  # ../..
+  # OUTPUT_PREFIX
+  # "unittests."
+  # OUTPUT_SUFFIX
+  # .xml)
+  )
 
-# Add a file containing a set of constexpr tests
+# Add a file containing a set of constexpr test
 # add_executable(constexpr_tests constexpr_tests.cpp)
 # target_link_libraries(constexpr_tests PRIVATE myproject::project_options myproject::project_warnings catch_main)
 
