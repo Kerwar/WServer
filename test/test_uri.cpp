@@ -249,6 +249,7 @@ TEST_CASE("Parse String for bad scheme with illegal characters", "Uri")
     "$://www.example.com/",
     "1://www.example.com/",
     "h@://www.example.com/",
+    "h~://www.example.com/",
   };
 
   for (const auto &test_uri : test_uris) {
@@ -256,5 +257,51 @@ TEST_CASE("Parse String for bad scheme with illegal characters", "Uri")
     Uri::Uri uri;
 
     REQUIRE_FALSE(uri.ParseFromString(test_uri));
+  }
+}
+
+TEST_CASE("Parse String for bad usernames because illegal characters", "Uri")
+{
+  const std::vector<std::string> test_uris{
+    "//%X@www.example.com/",
+    "//%F5@www.example.com/",
+    "//%5@www.example.com/",
+    "//%5G@www.example.com/",
+    "//{@www.example.com/",
+  };
+
+  for (const auto &test_uri : test_uris) {
+
+    Uri::Uri uri;
+
+    INFO("Path in: " + test_uri);
+    REQUIRE_FALSE(uri.ParseFromString(test_uri));
+  }
+}
+
+TEST_CASE("Parse String with user name with corner cases", "Uri")
+{
+  struct TestVector
+  {
+    std::string path_in;
+    std::string user_name;
+  };
+
+  const std::vector<TestVector> testVectors{
+    { "//%41@www.example.com/", "A" },
+    { "//@www.example.com/", "" },
+    { "//!@www.example.com/", "!" },
+    { "//'@www.example.com/", "'" },
+    { "//(@www.example.com/", "(" },
+    { "//;@www.example.com/", ";" },
+    { "//:@www.example.com/", ":" },
+  };
+
+  for (const auto &testVector : testVectors) {
+    Uri::Uri uri;
+
+    INFO(testVector.path_in);
+    REQUIRE(uri.ParseFromString(testVector.path_in));
+    REQUIRE(testVector.user_name == uri.GetUserName());
   }
 }

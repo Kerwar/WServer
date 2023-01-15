@@ -3,6 +3,7 @@
 #include <functional>
 #include <iterator>
 #include <memory>
+#include <random>
 #include <stdexcept>
 #include <string>
 
@@ -81,6 +82,42 @@ bool IsAlphabet(char letter)
 
 bool IsNumber(char letter) { return letter >= '0' && letter <= '9'; }
 
+/*
+ * This function checks if a character is an subdelimiter character, this set of
+ * character are
+ *
+ * @param [in] character
+ * The character to check
+ *
+ * @return
+ * An indication if the character is an unreserved character
+ */
+
+bool IsSubDelimiter(char character)
+{
+  return character == '!' || character == '$' || character == '&'
+         || character == '\'' || character == '(' || character == ')'
+         || character == '*' || character == '+' || character == ','
+         || character == ';' || character == '=';
+}
+
+/*
+ * This function checks if a character is an unreserved character, this set of
+ * character are ALPHA(lowercase and uppercase letters), [0-9], '+', '-', '.'
+ *
+ * @param [in] character
+ * The character to check
+ *
+ * @return
+ * An indication if the character is an unreserved character
+ */
+
+bool IsUnreservedCharacter(char character)
+{
+  return IsAlphabet(character) || IsNumber(character) || character == '+'
+         || character == '-' || character == '.' || character == '~';
+}
+
 std::function<bool(char, bool)> LegalSchemeCheckStrategy()
 {
   auto is_first_character = std::make_shared<bool>(true);
@@ -93,8 +130,7 @@ std::function<bool(char, bool)> LegalSchemeCheckStrategy()
         *is_first_character = false;
         return IsAlphabet(character);
       } else {
-        return IsAlphabet(character) || character == '+' || character == '-'
-               || character == '.' || IsNumber(character);
+        return IsUnreservedCharacter(character) && character != '~';
       }
     }
   };
@@ -119,7 +155,7 @@ struct Uri::Implementation
   {
     auto scheme_end = uri_string.find(':');
 
-    if (scheme_end == std::string::npos) {
+    if (scheme_end == std::string::npos || scheme_end > uri_string.find("//")) {
       scheme.clear();
       return true;
     } else {
@@ -146,8 +182,10 @@ struct Uri::Implementation
     if (user_delimiter == std::string::npos) {
       user_name.clear();
     } else {
-      user_name = authority.substr(0, user_delimiter);
+      auto coded_user_name = authority.substr(0, user_delimiter);
       authority = authority.substr(user_delimiter);
+
+      if (!UncodeUserName(coded_user_name)) { return false; }
     }
 
     const auto port_delimiter = authority.find(':');
@@ -175,6 +213,55 @@ struct Uri::Implementation
       has_port = true;
     }
     return true;
+  }
+
+  bool UncodeUserName(const std::string &coded_user_name)
+  {
+    enum Decoded_state { normal_state, first_digit_hex, second_digit_hex };
+    const int LETTER_DISPLACEMENT = 10;
+    const int HEX_DISPLACEMENT = 16;
+
+    Decoded_state decoded_state = normal_state;
+    int decoded_character = 0;
+    for (auto character : coded_user_name) {
+
+      switch (decoded_state) {
+      case normal_state:
+        if (character == '%') {
+          decoded_state = first_digit_hex;
+        } else if (IsUnreservedCharacter(character) || IsSubDelimiter(character)
+                   || character == ':') {
+          user_name.push_back(character);
+        } else {
+            return false;
+        }
+        break;
+      case first_digit_hex:
+        decoded_state = second_digit_hex;
+        if (IsNumber(character)) {
+          decoded_character = character - '0';
+        } else {
+          return false;
+        }
+        break;
+      case second_digit_hex:
+        decoded_state = normal_state;
+        decoded_character *= HEX_DISPLACEMENT;
+        if (IsNumber(character)) {
+          decoded_character += character - '0';
+          user_name.push_back(static_cast<char>(decoded_character));
+        } else if (character >= 'A' && character <= 'F') {
+          decoded_character += character - 'A' + LETTER_DISPLACEMENT;
+          user_name.push_back(static_cast<char>(decoded_character));
+          // user_name.push_back(static_cast<char>(decoded_character));
+        } else {
+          return false;
+        }
+        break;
+      }
+    }
+
+    return decoded_state == normal_state; 
   }
 
   void ParsePath(std::string &URL)
