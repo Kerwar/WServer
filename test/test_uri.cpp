@@ -28,7 +28,7 @@ TEST_CASE("Parse String path corner cases", "Uri")
     { "", {} },
     { "/", { "" } },
     { "/foo", { "", "foo" } },
-    { "foo/", { "" } },
+    { "foo/", { "foo", "" } },
   };
 
   for (const auto &testVector : testVectors) {
@@ -45,7 +45,7 @@ TEST_CASE("Parse String with no scheme but with host", "Uri")
 {
   Uri::Uri uri;
 
-  REQUIRE(uri.ParseFromString("www.example.com/foo/bar"));
+  REQUIRE(uri.ParseFromString("//www.example.com/foo/bar"));
   REQUIRE("www.example.com" == uri.GetHost());
 }
 
@@ -209,5 +209,52 @@ TEST_CASE("Parse String with user info ", "Uri")
     INFO(testVector.path_in);
     REQUIRE(uri.ParseFromString(testVector.path_in));
     REQUIRE(testVector.username == uri.GetUserName());
+  }
+}
+
+TEST_CASE("Parse String with scheme corner cases", "Uri")
+{
+  struct TestVector
+  {
+    std::string path_in;
+    std::string scheme;
+  };
+
+  const std::vector<TestVector> testVectors{
+    { "h://www.example.com/", "h" },
+    { "x+://www.example.com/", "x+" },
+    { "x-://www.example.com/", "x-" },
+    { "z.://www.example.com/", "z." },
+    { "aa://www.example.com/", "aa" },
+    { "a0://www.example.com/", "a0" },
+  };
+
+  for (const auto &testVector : testVectors) {
+    Uri::Uri uri;
+
+    INFO(testVector.path_in);
+    REQUIRE(uri.ParseFromString(testVector.path_in));
+    REQUIRE(testVector.scheme == uri.GetScheme());
+  }
+}
+
+
+TEST_CASE("Parse String for bad scheme with illegal characters", "Uri")
+{
+  const std::vector<std::string> test_uris{
+    "@://www.example.com/",
+    "0://www.example.com/",
+    "+://www.example.com/",
+    "-://www.example.com/",
+    "$://www.example.com/",
+    "1://www.example.com/",
+    "h@://www.example.com/",
+  };
+
+  for (const auto &test_uri : test_uris) {
+
+    Uri::Uri uri;
+
+    REQUIRE_FALSE(uri.ParseFromString(test_uri));
   }
 }

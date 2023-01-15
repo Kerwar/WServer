@@ -1,9 +1,105 @@
 #include "../headers/uri.hpp"
 #include <cstdint>
+#include <functional>
 #include <iterator>
 #include <memory>
 #include <stdexcept>
 #include <string>
+
+namespace {
+/*
+ * This Function checks if every character of the string matches the pattern
+ * the requisites from another Function
+ *
+ * @param [in] candidate
+ *  This is the string to test
+ *
+ *@param[in] StillPassing
+ * This is the requisite Function
+ *
+ * @return
+ * An indication if the candidate passes the test
+ */
+
+bool FailsMatch(const std::string &candidate,
+  const std::function<bool(char, bool)> &StillPassing)
+{
+  for (const auto character : candidate) {
+    if (!StillPassing(character, false)) { return true; }
+  }
+  return !StillPassing(' ', true);
+}
+
+/*
+ * This function checks if a character is a lowercase alphabet letter
+ *
+ * @param [in] character
+ * The character to check
+ *
+ * @return
+ * An indication if the character is a lowercase letter
+ */
+
+bool IsLowerCase(char letter) { return letter >= 'a' && letter <= 'z'; }
+
+/*
+ * This function checks if a character is an uppercase alphabet letter
+ *
+ * @param [in] letter
+ * The character to check
+ *
+ * @return
+ * An indication if the character is an uppercase letter
+ */
+
+bool IsUpperCase(char letter) { return letter >= 'A' && letter <= 'Z'; }
+
+/*
+ * This function checks if a character is an alphabet letter
+ *
+ * @param [in] letter
+ * The character to check
+ *
+ * @return
+ * An indication if the character is an alphabet letter
+ */
+
+bool IsAlphabet(char letter)
+{
+  return IsLowerCase(letter) || IsUpperCase(letter);
+}
+
+/*
+ * This function checks if a character is a number
+ *
+ * @param [in] letter
+ * The character to check
+ *
+ * @return
+ * An indication if the character is an number
+ */
+
+bool IsNumber(char letter) { return letter >= '0' && letter <= '9'; }
+
+std::function<bool(char, bool)> LegalSchemeCheckStrategy()
+{
+  auto is_first_character = std::make_shared<bool>(true);
+
+  return [is_first_character](char character, bool end) {
+    if (end) {
+      return !*is_first_character;
+    } else {
+      if (*is_first_character) {
+        *is_first_character = false;
+        return IsAlphabet(character);
+      } else {
+        return IsAlphabet(character) || character == '+' || character == '-'
+               || character == '.' || IsNumber(character);
+      }
+    }
+  };
+}
+}// namespace
 
 namespace Uri {
 
@@ -19,24 +115,66 @@ struct Uri::Implementation
   std::string fragment;
 
   // Methods
-  std::string ParseScheme(const std::string &uri_string)
+  bool ParseScheme(const std::string &uri_string)
   {
     auto scheme_end = uri_string.find(':');
 
     if (scheme_end == std::string::npos) {
       scheme.clear();
-      return uri_string;
+      return true;
     } else {
       scheme = uri_string.substr(0, scheme_end);
-      return uri_string.substr(scheme_end + 3);
+      return !FailsMatch(scheme, LegalSchemeCheckStrategy());
     }
   }
 
-  std::string ParseHost(const std::string &uri_string)
+  bool ParseHost(std::string &uri_string)
   {
-    auto uri_after_scheme = uri_string;
-    host = uri_after_scheme;
-    return uri_after_scheme;
+    auto authority_end = uri_string.find('/', 2);
+
+    if (authority_end == std::string::npos) {
+      auto other_authority_end = uri_string.find_first_of("?#");
+      authority_end = other_authority_end == std::string::npos
+                        ? uri_string.length()
+                        : other_authority_end;
+    }
+
+    auto authority = uri_string.substr(2, authority_end - 2);
+    uri_string = uri_string.substr(authority_end);
+
+    auto user_delimiter = authority.find('@');
+    if (user_delimiter == std::string::npos) {
+      user_name.clear();
+    } else {
+      user_name = authority.substr(0, user_delimiter);
+      authority = authority.substr(user_delimiter);
+    }
+
+    const auto port_delimiter = authority.find(':');
+    has_port = false;
+    if (port_delimiter == std::string::npos) {
+      host = authority;
+    } else {
+      host = authority.substr(0, port_delimiter);
+      try {
+        const std::shared_ptr<size_t> end_of_number(new size_t);
+        const std::string port_segment = authority.substr(
+          port_delimiter + 1, authority_end - port_delimiter - 1);
+
+        port =
+          static_cast<uint16_t>(std::stoul(port_segment, end_of_number.get()));
+        const auto signed_port = std::stoi(port_segment);
+
+        if (*end_of_number != port_segment.size()) { return false; }
+        if (signed_port != port) { return false; }
+
+      } catch (const std::invalid_argument &e) {
+        return false;
+      }
+
+      has_port = true;
+    }
+    return true;
   }
 
   void ParsePath(std::string &URL)
@@ -95,56 +233,17 @@ Uri::Uri() : impl_(new Implementation) {}
 
 bool Uri::ParseFromString(const std::string &uri_string)
 {
-  auto uri_after_scheme = impl_->ParseScheme(uri_string);
+  if (!impl_->ParseScheme(uri_string)) { return false; }
 
-  impl_->has_port = false;
+  auto scheme_end = uri_string.find(':');
+  auto uri_left =
+    impl_->scheme.empty() ? uri_string : uri_string.substr(scheme_end + 1);
 
-  auto authority_end = uri_after_scheme.find('/');
-
-  if (authority_end == std::string::npos) {
-    auto other_authority_end = uri_after_scheme.find_first_of("?#");
-    authority_end = other_authority_end == std::string::npos
-                      ? uri_after_scheme.length()
-                      : other_authority_end;
+  if (uri_left.substr(0, 2) == "//") {
+    if (!impl_->ParseHost(uri_left)) { return false; }
   }
 
-  auto authority = uri_after_scheme.substr(0, authority_end);
-  auto path = uri_after_scheme.substr(authority_end);
-
-  auto user_delimiter = authority.find('@');
-  if (user_delimiter == std::string::npos) {
-    impl_->user_name.clear();
-  } else {
-    impl_->user_name = authority.substr(0, user_delimiter);
-    authority = authority.substr(user_delimiter);
-  }
-
-  const auto port_delimiter = authority.find(':');
-  if (port_delimiter == std::string::npos) {
-    impl_->host = authority;
-  } else {
-    impl_->host = authority.substr(0, port_delimiter);
-    try {
-      const std::shared_ptr<size_t> end_of_number(new size_t);
-      const std::string port_segment = authority.substr(
-        port_delimiter + 1, authority_end - port_delimiter - 1);
-
-      impl_->port =
-        static_cast<uint16_t>(std::stoul(port_segment, end_of_number.get()));
-      const auto signed_port = std::stoi(port_segment);
-
-      if (*end_of_number != port_segment.size()) { return false; }
-      if (signed_port != impl_->port) { return false; }
-
-    } catch (const std::invalid_argument &e) {
-      return false;
-    }
-
-    impl_->has_port = true;
-    authority = authority.substr(authority_end);
-  }
-
-  impl_->ParsePath(path);
+  impl_->ParsePath(uri_left);
 
   if (!impl_->path.empty()) {
     impl_->ParseQueryAndFragment(impl_->path.back());
