@@ -175,6 +175,7 @@ TEST_CASE("Parse String with query and fragment", "Uri")
       "foo?earth",
       "bar" },
     { "https://www.example.com/spam?foo#bar", "www.example.com", "foo", "bar" },
+    { "/?foo#bar", "", "foo", "bar" },
   };
 
   for (const auto &testVector : testVectors) {
@@ -426,3 +427,58 @@ TEST_CASE("Parse String with path corner cases", "Uri")
   }
 }
 
+TEST_CASE("Parse String for bad query because illegal characters", "Uri")
+{
+  const std::vector<std::string> test_uris{
+    "//www.example.com?foo[bar",
+    "//www.example.com?]bar",
+    "//www.example.com?foo[",
+    "//www.example.com?]",
+    "//www.example.com?foo[bar",
+    "//www.example.com?foo/[bar",
+    "//www.example.com?foo[bar/",
+    "//www.example.com/foo?[/",
+    "?foo[bar",
+    "?]bar",
+    "?foo[",
+    "?]",
+    "?foo[bar",
+    "?foo/[bar",
+    "?foo[bar/",
+    "/foo?[/",
+  };
+
+  for (const auto &test_uri : test_uris) {
+
+    Uri::Uri uri;
+
+    INFO("Path in: " + test_uri);
+    REQUIRE_FALSE(uri.ParseFromString(test_uri));
+  }
+}
+
+TEST_CASE("Parse String with query corner cases", "Uri")
+{
+  struct TestVector
+  {
+    std::string path_in;
+    std::string query;
+  };
+
+  const std::vector<TestVector> testVectors{
+    { "/?:/foo", ":/foo" },
+    { "?bob@/foo", "bob@/foo" },
+    { "?hello!", "hello!" },
+    { "urn:?hello,%20w%6Frld", "hello, world" },
+    { "//example.com/foo?(bar)", "(bar)" },
+    { "//example.com?foo?(bar)", "foo?(bar)" },
+  };
+
+  for (const auto &testVector : testVectors) {
+    Uri::Uri uri;
+
+    INFO("Path in: " + testVector.path_in);
+    REQUIRE(uri.ParseFromString(testVector.path_in));
+    REQUIRE(testVector.query == uri.GetQuery());
+  }
+}

@@ -153,6 +153,23 @@ bool IsUnreservedCharacter(char character)
          || character == '@';
 }
 
+/*
+ * This function checks if a character is an pchar character, this set
+ * of character are unreserved, HEX digit, sud-delimiters, ':' and '@'
+ *
+ * @param [in] character
+ * The character to check
+ *
+ * @return
+ * An indication if the character is a pchar character
+ */
+
+[[maybe_unused]] bool IsPcharCharacter(char character)
+{
+  return IsUnreservedCharacter(character) || IsSubDelimiter(character)
+         || character == ':' || character == '@';
+}
+
 std::function<bool(char, bool)> LegalSchemeCheckStrategy()
 {
   auto is_first_character = std::make_shared<bool>(true);
@@ -468,9 +485,10 @@ struct Uri::Implementation
     if (!URL.empty()) {
       for (;;) {
         auto path_delimiter = URL.find('/');
+        auto query_fragment_delimiter = std::min(URL.find('?'), URL.find('#'));
 
         if (path_delimiter == std::string::npos) {
-          path_delimiter = std::min(URL.find('?'), URL.find('#'));
+          path_delimiter = query_fragment_delimiter;
           if (path_delimiter == std::string::npos) {
             path.push_back(URL);
             URL.clear();
@@ -480,6 +498,12 @@ struct Uri::Implementation
           }
           break;
         } else {
+          if (path_delimiter > query_fragment_delimiter) {
+            path.emplace_back(URL.begin(),
+              URL.begin() + static_cast<int>(query_fragment_delimiter));
+            URL = URL.substr(query_fragment_delimiter);
+            break;
+          }
           path.emplace_back(
             URL.begin(), URL.begin() + static_cast<int>(path_delimiter));
           URL = URL.substr(path_delimiter + 1);
@@ -547,7 +571,7 @@ struct Uri::Implementation
     return decode_state == normal_state;
   }
 
-  void ParseQueryAndFragment(const std::string &uri_string)
+  bool ParseQueryAndFragment(const std::string &uri_string)
   {
     const auto query_delimiter = uri_string.find('?');
 
@@ -559,16 +583,81 @@ struct Uri::Implementation
         query.clear();
       } else {
         query = uri_string.substr(query_delimiter + 1);
+        if (!DecodeQueryOrFragment(query)) {
+          query.clear();
+          return false;
+        }
       }
     } else {
       fragment = uri_string.substr(fragment_delimiter + 1);
+      if (!DecodeQueryOrFragment(fragment)) {
+        fragment.clear();
+        return false;
+      }
       if (query_delimiter == std::string::npos) {
         query.clear();
       } else {
         query = uri_string.substr(
           query_delimiter + 1, fragment_delimiter - query_delimiter - 1);
+        if (!DecodeQueryOrFragment(query)) {
+          query.clear();
+          return false;
+        }
       }
     }
+    return true;
+  }
+
+  bool static DecodeQueryOrFragment(std::string &uri_string)
+  {
+    auto original_string = std::move(uri_string);
+    uri_string.clear();
+
+    enum Decode_state { normal_state, first_digit_hex, second_digit_hex };
+    const int LETTER_DISPLACEMENT = 10;
+    const int HEX_DISPLACEMENT = 16;
+
+    Decode_state decode_state = normal_state;
+    int decoded_character = 0;
+
+    for (auto character : original_string) {
+
+      switch (decode_state) {
+      case normal_state:
+        if (character == '%') {
+          decode_state = first_digit_hex;
+          break;
+        } else if (IsPcharCharacter(character) || character == ':'
+                   || character == '/' || character == '?') {
+          uri_string.push_back(character);
+          break;
+        }
+        return false;
+
+      case first_digit_hex:
+        if (IsNumber(character)) {
+          decode_state = second_digit_hex;
+          decoded_character = character - '0';
+          break;
+        }
+        return false;
+
+      case second_digit_hex:
+        decode_state = normal_state;
+        decoded_character *= HEX_DISPLACEMENT;
+        if (IsNumber(character)) {
+          decoded_character += character - '0';
+          uri_string.push_back(static_cast<char>(decoded_character));
+          break;
+        } else if (character >= 'A' && character <= 'F') {
+          decoded_character += character - 'A' + LETTER_DISPLACEMENT;
+          uri_string.push_back(static_cast<char>(decoded_character));
+          break;
+        }
+        return false;
+      }
+    }
+    return decode_state == normal_state;
   }
 };
 
@@ -590,7 +679,9 @@ bool Uri::ParseFromString(const std::string &uri_string)
 
   if (!impl_->ParsePath(uri_left)) { return false; }
 
-  if (!uri_left.empty()) { impl_->ParseQueryAndFragment(uri_left); }
+  if (!uri_left.empty()) {
+    if (!impl_->ParseQueryAndFragment(uri_left)) { return false; };
+  }
 
   return true;
 }
