@@ -134,6 +134,25 @@ bool IsUnreservedCharacter(char character)
          || character == '-' || character == '.' || character == '~';
 }
 
+
+/*
+ * This function checks if a character is an gen-delimiter character, this set
+ * of character are ':', '/', '?, '#', '[', ']', '@'
+ *
+ * @param [in] character
+ * The character to check
+ *
+ * @return
+ * An indication if the character is a gen-delimiter character
+ */
+
+[[maybe_unused]] bool IsGenDelimiterCharacter(char character)
+{
+  return character == ':' || character == '/' || character == '?'
+         || character == '#' || character == '[' || character == ']'
+         || character == '@';
+}
+
 std::function<bool(char, bool)> LegalSchemeCheckStrategy()
 {
   auto is_first_character = std::make_shared<bool>(true);
@@ -171,7 +190,7 @@ struct Uri::Implementation
   {
     auto scheme_end = uri_string.find(':');
 
-    if (scheme_end == std::string::npos || scheme_end > uri_string.find("//")) {
+    if (scheme_end == std::string::npos || scheme_end > uri_string.find('/')) {
       scheme.clear();
       return true;
     } else {
@@ -432,7 +451,8 @@ struct Uri::Implementation
 
     return true;
   }
-  void ParsePath(std::string &URL)
+
+  bool ParsePath(std::string &URL)
   {
     // Parse Path
     // "" -> []
@@ -442,11 +462,22 @@ struct Uri::Implementation
     path.clear();
     if (URL == "/") {
       path.emplace_back("");
-    } else if (!URL.empty()) {
+      return true;
+    }
+
+    if (!URL.empty()) {
       for (;;) {
         auto path_delimiter = URL.find('/');
+
         if (path_delimiter == std::string::npos) {
-          path.push_back(URL);
+          path_delimiter = std::min(URL.find('?'), URL.find('#'));
+          if (path_delimiter == std::string::npos) {
+            path.push_back(URL);
+            URL.clear();
+          } else {
+            path.emplace_back(
+              URL.begin(), URL.begin() + static_cast<int>(path_delimiter));
+          }
           break;
         } else {
           path.emplace_back(
@@ -455,6 +486,65 @@ struct Uri::Implementation
         }
       }
     }
+
+    for (auto &segment : path) {
+      if (!DecodeSegmentPath(segment)) { return false; }
+    }
+
+    return true;
+  }
+
+  bool static DecodeSegmentPath(std::string &segment)
+  {
+    const auto original_segment = std::move(segment);
+    segment.clear();
+
+    enum Decode_state { normal_state, first_digit_hex, second_digit_hex };
+    const int LETTER_DISPLACEMENT = 10;
+    const int HEX_DISPLACEMENT = 16;
+
+    Decode_state decode_state = normal_state;
+    int decoded_character = 0;
+
+    for (auto character : original_segment) {
+
+      switch (decode_state) {
+      case normal_state:
+        if (character == '%') {
+          decode_state = first_digit_hex;
+          break;
+        } else if (IsUnreservedCharacter(character) || IsSubDelimiter(character)
+                   || character == ':' || character == '@') {
+          segment.push_back(character);
+          break;
+        }
+        return false;
+
+      case first_digit_hex:
+        if (IsNumber(character)) {
+          decode_state = second_digit_hex;
+          decoded_character = character - '0';
+          break;
+        }
+        return false;
+
+      case second_digit_hex:
+        decode_state = normal_state;
+        decoded_character *= HEX_DISPLACEMENT;
+        if (IsNumber(character)) {
+          decoded_character += character - '0';
+          segment.push_back(static_cast<char>(decoded_character));
+          break;
+        } else if (character >= 'A' && character <= 'F') {
+          decoded_character += character - 'A' + LETTER_DISPLACEMENT;
+          segment.push_back(static_cast<char>(decoded_character));
+          break;
+        }
+        return false;
+      }
+    }
+
+    return decode_state == normal_state;
   }
 
   void ParseQueryAndFragment(const std::string &uri_string)
@@ -498,11 +588,9 @@ bool Uri::ParseFromString(const std::string &uri_string)
     if (!impl_->ParseHost(uri_left)) { return false; }
   }
 
-  impl_->ParsePath(uri_left);
+  if (!impl_->ParsePath(uri_left)) { return false; }
 
-  if (!impl_->path.empty()) {
-    impl_->ParseQueryAndFragment(impl_->path.back());
-  }
+  if (!uri_left.empty()) { impl_->ParseQueryAndFragment(uri_left); }
 
   return true;
 }

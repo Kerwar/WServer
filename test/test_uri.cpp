@@ -323,7 +323,7 @@ TEST_CASE("Parse String for bad hosts", "Uri")
 }
 
 
-TEST_CASE("Parse String with host with corner cases", "Uri")
+TEST_CASE("Parse String with host corner cases", "Uri")
 {
   struct TestVector
   {
@@ -368,6 +368,61 @@ TEST_CASE("Parse String missinterpret colon", "Uri")
 
     INFO("Path in: " + test_uri);
     REQUIRE(uri.ParseFromString(test_uri));
+  }
+}
+
+TEST_CASE("Parse String for bad path", "Uri")
+{
+  const std::vector<std::string> test_uris{
+    "//www.example.com/foo[bar",
+    "//www.example.com/]bar",
+    "//www.example.com/foo[",
+    "//www.example.com/]",
+    "//www.example.com/foo[bar",
+    "//www.example.com/foo/[bar",
+    "//www.example.com/foo[bar/",
+    "//www.example.com/foo/[/",
+    "/foo[bar",
+    "/]bar",
+    "/foo[",
+    "/]",
+    "/foo[bar",
+    "/foo/[bar",
+    "/foo[bar/",
+    "/foo/[/",
+  };
+
+  for (const auto &test_uri : test_uris) {
+
+    Uri::Uri uri;
+
+    INFO("Path in: " + test_uri);
+    REQUIRE_FALSE(uri.ParseFromString(test_uri));
+  }
+}
+
+TEST_CASE("Parse String with path corner cases", "Uri")
+{
+  struct TestVector
+  {
+    std::string path_in;
+    std::vector<std::string> path;
+  };
+
+  const std::vector<TestVector> testVectors{
+    { "/:/foo", { "", ":", "foo" } },
+    { "bob@/foo", { "bob@", "foo" } },
+    { "hello!", { "hello!" } },
+    { "urn:hello,%20w%6Frld", { "hello, world" } },
+    { "//example.xom/foo/(bar", { "", "foo", "(bar" } },
+  };
+
+  for (const auto &testVector : testVectors) {
+    Uri::Uri uri;
+
+    INFO("Path in: " + testVector.path_in);
+    REQUIRE(uri.ParseFromString(testVector.path_in));
+    REQUIRE(testVector.path == uri.GetPath());
   }
 }
 
