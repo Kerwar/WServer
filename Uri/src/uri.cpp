@@ -83,6 +83,22 @@ bool IsAlphabet(char letter)
 bool IsNumber(char letter) { return letter >= '0' && letter <= '9'; }
 
 /*
+ * This function checks if a character is a hexdigit, the hexidigit values
+ * goes from 0-9 and A, B, C, D, E, F
+ *
+ * @param [in] letter
+ * The character to check
+ *
+ * @return
+ * An indication if the character is an hexdigit
+ */
+
+bool IsHexDigit(char letter)
+{
+  return IsNumber(letter) || (letter >= 'A' && letter <= 'F');
+}
+
+/*
  * This function checks if a character is an subdelimiter character, this set of
  * character are
  *
@@ -183,17 +199,24 @@ struct Uri::Implementation
       user_name.clear();
     } else {
       auto coded_user_name = authority.substr(0, user_delimiter);
-      authority = authority.substr(user_delimiter);
+      authority = authority.substr(user_delimiter + 1);
 
       if (!UncodeUserName(coded_user_name)) { return false; }
     }
 
-    const auto port_delimiter = authority.find(':');
+    auto port_delimiter = authority.find(':');
+    if (port_delimiter < authority.find(']')
+        && authority.find(']') != std::string::npos) {
+      port_delimiter = authority.find(':', port_delimiter + 1);
+    }
+
     has_port = false;
+
     if (port_delimiter == std::string::npos) {
-      host = authority;
+      if (!UncodeHost(authority)) { return false; }
     } else {
-      host = authority.substr(0, port_delimiter);
+      auto coded_host = authority.substr(0, port_delimiter);
+      if (!UncodeHost(coded_host)) { return false; }
       try {
         const std::shared_ptr<size_t> end_of_number(new size_t);
         const std::string port_segment = authority.substr(
@@ -217,53 +240,198 @@ struct Uri::Implementation
 
   bool UncodeUserName(const std::string &coded_user_name)
   {
-    enum Decoded_state { normal_state, first_digit_hex, second_digit_hex };
+    enum Decode_state { normal_state, first_digit_hex, second_digit_hex };
     const int LETTER_DISPLACEMENT = 10;
     const int HEX_DISPLACEMENT = 16;
 
-    Decoded_state decoded_state = normal_state;
+    Decode_state decode_state = normal_state;
     int decoded_character = 0;
     for (auto character : coded_user_name) {
 
-      switch (decoded_state) {
+      switch (decode_state) {
       case normal_state:
         if (character == '%') {
-          decoded_state = first_digit_hex;
+          decode_state = first_digit_hex;
+          break;
         } else if (IsUnreservedCharacter(character) || IsSubDelimiter(character)
                    || character == ':') {
           user_name.push_back(character);
-        } else {
-            return false;
+          break;
         }
-        break;
+        return false;
+
       case first_digit_hex:
-        decoded_state = second_digit_hex;
         if (IsNumber(character)) {
+          decode_state = second_digit_hex;
           decoded_character = character - '0';
-        } else {
-          return false;
+          break;
         }
-        break;
+        return false;
+
       case second_digit_hex:
-        decoded_state = normal_state;
+        decode_state = normal_state;
         decoded_character *= HEX_DISPLACEMENT;
         if (IsNumber(character)) {
           decoded_character += character - '0';
           user_name.push_back(static_cast<char>(decoded_character));
+          break;
         } else if (character >= 'A' && character <= 'F') {
           decoded_character += character - 'A' + LETTER_DISPLACEMENT;
           user_name.push_back(static_cast<char>(decoded_character));
-          // user_name.push_back(static_cast<char>(decoded_character));
+          break;
+        }
+        return false;
+      }
+    }
+
+    return decode_state == normal_state;
+  }
+
+  bool UncodeHost(const std::string &coded_host)
+  {
+    enum Decoded_state {
+      first_character,
+      normal_state,
+      first_digit_hex,
+      second_digit_hex,
+      IPLiteral,
+      IPv4address,
+    };
+    const int LETTER_DISPLACEMENT = 10;
+    const int HEX_DISPLACEMENT = 16;
+
+    Decoded_state decode_state =
+      coded_host.empty() ? normal_state : first_character;
+    int decoded_character = 0;
+    for (auto character : coded_host) {
+
+      switch (decode_state) {
+      case first_character:
+        if (character == '[') {
+          decode_state = IPLiteral;
+          break;
+        }
+        decode_state = normal_state;
+        [[fallthrough]];
+
+      case normal_state:
+        if (character == '%') {
+          decode_state = first_digit_hex;
+          break;
+        } else if (IsUnreservedCharacter(character) || IsSubDelimiter(character)
+                   || character == ':') {
+          host.push_back(character);
+          break;
+        }
+        return false;
+
+      case first_digit_hex:
+        decode_state = second_digit_hex;
+        if (IsNumber(character)) {
+          decoded_character = character - '0';
+          break;
+        }
+        return false;
+
+      case second_digit_hex:
+        decode_state = normal_state;
+        decoded_character *= HEX_DISPLACEMENT;
+        if (IsNumber(character)) {
+          decoded_character += character - '0';
+        } else if (character >= 'A' && character <= 'F') {
+          decoded_character += character - 'A' + LETTER_DISPLACEMENT;
         } else {
           return false;
         }
+        host.push_back(static_cast<char>(decoded_character));
+        break;
+
+      case IPLiteral:
+        return DecodeIP(coded_host);
+
+      case IPv4address:
         break;
       }
     }
 
-    return decoded_state == normal_state; 
+    return decode_state == normal_state;
   }
 
+  bool DecodeIP(const std::string &coded_host)
+  {
+    enum States {
+      first_character,
+      IP_literal,
+      IPv6address,
+      IPvFuture_hexdigit,
+      IPvFuture_dot,
+      IPvFuture_last,
+      last_character,
+    };
+
+    States decode_state = first_character;
+    for (auto character : coded_host) {
+      switch (decode_state) {
+      case first_character:
+        host.push_back(character);
+        decode_state = IP_literal;
+        break;
+
+      case IP_literal:
+        if (character == 'v') {
+          decode_state = IPvFuture_hexdigit;
+          host.push_back(character);
+          break;
+        } else {
+          decode_state = IPv6address;
+        }
+        [[fallthrough]];
+
+      case IPv6address:
+        if (character == ']') {
+          host.push_back(character);
+          break;
+        }
+        return false;
+
+      case IPvFuture_hexdigit:
+        if (IsHexDigit(character)) {
+          host.push_back(character);
+          decode_state = IPvFuture_dot;
+          break;
+        }
+        return false;
+
+      case IPvFuture_dot:
+        if (character == '.') {
+          host.push_back(character);
+          decode_state = IPvFuture_last;
+          break;
+        }
+        return false;
+
+      case IPvFuture_last:
+        if (IsUnreservedCharacter(character) || character == ':') {
+          host.push_back(character);
+          decode_state = last_character;
+          break;
+        }
+        return false;
+
+      case last_character:
+        if (character == ']' && host.back() != ']') {
+          host.push_back(character);
+          break;
+        }
+        [[fallthrough]];
+
+      default:
+        return false;
+      }
+    }
+
+    return true;
+  }
   void ParsePath(std::string &URL)
   {
     // Parse Path

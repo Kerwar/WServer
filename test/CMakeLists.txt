@@ -44,6 +44,8 @@ catch_discover_tests(
   test_uri
   TEST_PREFIX
   "unittests."
+  PROPERTIES
+  --force-colour
   # REPORTER
   # xml
   # OUTPUT_DIR
