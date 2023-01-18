@@ -3,7 +3,11 @@ find_package(spdlog CONFIG REQUIRED)
 find_package(CLI11 CONFIG REQUIRED)
 
 # Generic test that uses conan libs
-add_library(UriLib src/uri.cpp)
+add_library(UriLib
+    src/uri.cpp
+    src/percent_encoded_character_decoder.cpp
+    src/is_character_in_set.cpp
+    )
 
 target_link_libraries(
   UriLib 
@@ -11,3 +15,4 @@ target_link_libraries(
   PRIVATE CLI11::CLI11 fmt::fmt spdlog::spdlog)
 
 target_include_directories(UriLib PRIVATE "${CMAKE_BINARY_DIR}/configured_files/include")
+target_include_directories(UriLib PRIVATE headers)

@@ -1,4 +1,7 @@
 #include "../headers/uri.hpp"
+#include "../headers/is_character_in_set.hpp"
+#include "../headers/percent_encoded_character_decoder.hpp"
+
 #include <cstdint>
 #include <functional>
 #include <iterator>
@@ -31,145 +34,6 @@ bool FailsMatch(const std::string &candidate,
   return !StillPassing(' ', true);
 }
 
-/*
- * This function checks if a character is a lowercase alphabet letter
- *
- * @param [in] character
- * The character to check
- *
- * @return
- * An indication if the character is a lowercase letter
- */
-
-bool IsLowerCase(char letter) { return letter >= 'a' && letter <= 'z'; }
-
-/*
- * This function checks if a character is an uppercase alphabet letter
- *
- * @param [in] letter
- * The character to check
- *
- * @return
- * An indication if the character is an uppercase letter
- */
-
-bool IsUpperCase(char letter) { return letter >= 'A' && letter <= 'Z'; }
-
-/*
- * This function checks if a character is an alphabet letter
- *
- * @param [in] letter
- * The character to check
- *
- * @return
- * An indication if the character is an alphabet letter
- */
-
-bool IsAlphabet(char letter)
-{
-  return IsLowerCase(letter) || IsUpperCase(letter);
-}
-
-/*
- * This function checks if a character is a number
- *
- * @param [in] letter
- * The character to check
- *
- * @return
- * An indication if the character is an number
- */
-
-bool IsNumber(char letter) { return letter >= '0' && letter <= '9'; }
-
-/*
- * This function checks if a character is a hexdigit, the hexidigit values
- * goes from 0-9 and A, B, C, D, E, F
- *
- * @param [in] letter
- * The character to check
- *
- * @return
- * An indication if the character is an hexdigit
- */
-
-bool IsHexDigit(char letter)
-{
-  return IsNumber(letter) || (letter >= 'A' && letter <= 'F');
-}
-
-/*
- * This function checks if a character is an subdelimiter character, this set of
- * character are
- *
- * @param [in] character
- * The character to check
- *
- * @return
- * An indication if the character is an unreserved character
- */
-
-bool IsSubDelimiter(char character)
-{
-  return character == '!' || character == '$' || character == '&'
-         || character == '\'' || character == '(' || character == ')'
-         || character == '*' || character == '+' || character == ','
-         || character == ';' || character == '=';
-}
-
-/*
- * This function checks if a character is an unreserved character, this set of
- * character are ALPHA(lowercase and uppercase letters), [0-9], '+', '-', '.'
- *
- * @param [in] character
- * The character to check
- *
- * @return
- * An indication if the character is an unreserved character
- */
-
-bool IsUnreservedCharacter(char character)
-{
-  return IsAlphabet(character) || IsNumber(character) || character == '+'
-         || character == '-' || character == '.' || character == '~';
-}
-
-
-/*
- * This function checks if a character is an gen-delimiter character, this set
- * of character are ':', '/', '?, '#', '[', ']', '@'
- *
- * @param [in] character
- * The character to check
- *
- * @return
- * An indication if the character is a gen-delimiter character
- */
-
-[[maybe_unused]] bool IsGenDelimiterCharacter(char character)
-{
-  return character == ':' || character == '/' || character == '?'
-         || character == '#' || character == '[' || character == ']'
-         || character == '@';
-}
-
-/*
- * This function checks if a character is an pchar character, this set
- * of character are unreserved, HEX digit, sud-delimiters, ':' and '@'
- *
- * @param [in] character
- * The character to check
- *
- * @return
- * An indication if the character is a pchar character
- */
-
-[[maybe_unused]] bool IsPcharCharacter(char character)
-{
-  return IsUnreservedCharacter(character) || IsSubDelimiter(character)
-         || character == ':' || character == '@';
-}
-
 std::function<bool(char, bool)> LegalSchemeCheckStrategy()
 {
   auto is_first_character = std::make_shared<bool>(true);
@@ -180,13 +44,15 @@ std::function<bool(char, bool)> LegalSchemeCheckStrategy()
     } else {
       if (*is_first_character) {
         *is_first_character = false;
-        return IsAlphabet(character);
+        return Uri::IsAlphabet(character);
       } else {
-        return IsUnreservedCharacter(character) && character != '~';
+        return Uri::IsUnreservedCharacter(character) && character != '~';
       }
     }
   };
 }
+
+
 }// namespace
 
 namespace Uri {
@@ -276,18 +142,17 @@ struct Uri::Implementation
 
   bool UncodeUserName(const std::string &coded_user_name)
   {
-    enum Decode_state { normal_state, first_digit_hex, second_digit_hex };
-    const int LETTER_DISPLACEMENT = 10;
-    const int HEX_DISPLACEMENT = 16;
+    enum Decode_state { normal_state, hex_decode_character };
 
     Decode_state decode_state = normal_state;
-    int decoded_character = 0;
-    for (auto character : coded_user_name) {
+    PercentEncodedCharacterDecoder percent_decoder;
 
+    for (auto character : coded_user_name) {
       switch (decode_state) {
       case normal_state:
         if (character == '%') {
-          decode_state = first_digit_hex;
+          percent_decoder = PercentEncodedCharacterDecoder();
+          decode_state = hex_decode_character;
           break;
         } else if (IsUnreservedCharacter(character) || IsSubDelimiter(character)
                    || character == ':') {
@@ -296,30 +161,15 @@ struct Uri::Implementation
         }
         return false;
 
-      case first_digit_hex:
-        if (IsNumber(character)) {
-          decode_state = second_digit_hex;
-          decoded_character = character - '0';
-          break;
+      case hex_decode_character:
+        if (!percent_decoder.NextEncodedCharacter(character)) { return false; }
+        if (percent_decoder.Done()) {
+          user_name.push_back(percent_decoder.GetDecodedCharacter());
+          decode_state = normal_state;
         }
-        return false;
-
-      case second_digit_hex:
-        decode_state = normal_state;
-        decoded_character *= HEX_DISPLACEMENT;
-        if (IsNumber(character)) {
-          decoded_character += character - '0';
-          user_name.push_back(static_cast<char>(decoded_character));
-          break;
-        } else if (character >= 'A' && character <= 'F') {
-          decoded_character += character - 'A' + LETTER_DISPLACEMENT;
-          user_name.push_back(static_cast<char>(decoded_character));
-          break;
-        }
-        return false;
+        break;
       }
     }
-
     return decode_state == normal_state;
   }
 
@@ -328,17 +178,15 @@ struct Uri::Implementation
     enum Decoded_state {
       first_character,
       normal_state,
-      first_digit_hex,
-      second_digit_hex,
+      hex_decode_character,
       IPLiteral,
       IPv4address,
     };
-    const int LETTER_DISPLACEMENT = 10;
-    const int HEX_DISPLACEMENT = 16;
 
     Decoded_state decode_state =
       coded_host.empty() ? normal_state : first_character;
-    int decoded_character = 0;
+    PercentEncodedCharacterDecoder percent_decoder;
+
     for (auto character : coded_host) {
 
       switch (decode_state) {
@@ -352,7 +200,8 @@ struct Uri::Implementation
 
       case normal_state:
         if (character == '%') {
-          decode_state = first_digit_hex;
+          percent_decoder = PercentEncodedCharacterDecoder();
+          decode_state = hex_decode_character;
           break;
         } else if (IsUnreservedCharacter(character) || IsSubDelimiter(character)
                    || character == ':') {
@@ -361,25 +210,12 @@ struct Uri::Implementation
         }
         return false;
 
-      case first_digit_hex:
-        decode_state = second_digit_hex;
-        if (IsNumber(character)) {
-          decoded_character = character - '0';
-          break;
+      case hex_decode_character:
+        if (!percent_decoder.NextEncodedCharacter(character)) { return false; }
+        if (percent_decoder.Done()) {
+          host.push_back(percent_decoder.GetDecodedCharacter());
+          decode_state = normal_state;
         }
-        return false;
-
-      case second_digit_hex:
-        decode_state = normal_state;
-        decoded_character *= HEX_DISPLACEMENT;
-        if (IsNumber(character)) {
-          decoded_character += character - '0';
-        } else if (character >= 'A' && character <= 'F') {
-          decoded_character += character - 'A' + LETTER_DISPLACEMENT;
-        } else {
-          return false;
-        }
-        host.push_back(static_cast<char>(decoded_character));
         break;
 
       case IPLiteral:
@@ -523,19 +359,18 @@ struct Uri::Implementation
     const auto original_segment = std::move(segment);
     segment.clear();
 
-    enum Decode_state { normal_state, first_digit_hex, second_digit_hex };
-    const int LETTER_DISPLACEMENT = 10;
-    const int HEX_DISPLACEMENT = 16;
+    enum Decode_state { normal_state, hex_decode_character };
 
+    PercentEncodedCharacterDecoder percent_decoder;
     Decode_state decode_state = normal_state;
-    int decoded_character = 0;
 
     for (auto character : original_segment) {
 
       switch (decode_state) {
       case normal_state:
         if (character == '%') {
-          decode_state = first_digit_hex;
+          percent_decoder = PercentEncodedCharacterDecoder();
+          decode_state = hex_decode_character;
           break;
         } else if (IsUnreservedCharacter(character) || IsSubDelimiter(character)
                    || character == ':' || character == '@') {
@@ -544,27 +379,13 @@ struct Uri::Implementation
         }
         return false;
 
-      case first_digit_hex:
-        if (IsNumber(character)) {
-          decode_state = second_digit_hex;
-          decoded_character = character - '0';
-          break;
+      case hex_decode_character:
+        if (!percent_decoder.NextEncodedCharacter(character)) { return false; }
+        if (percent_decoder.Done()) {
+          segment.push_back(percent_decoder.GetDecodedCharacter());
+          decode_state = normal_state;
         }
-        return false;
-
-      case second_digit_hex:
-        decode_state = normal_state;
-        decoded_character *= HEX_DISPLACEMENT;
-        if (IsNumber(character)) {
-          decoded_character += character - '0';
-          segment.push_back(static_cast<char>(decoded_character));
-          break;
-        } else if (character >= 'A' && character <= 'F') {
-          decoded_character += character - 'A' + LETTER_DISPLACEMENT;
-          segment.push_back(static_cast<char>(decoded_character));
-          break;
-        }
-        return false;
+        break;
       }
     }
 
