@@ -1,6 +1,6 @@
 #include "../headers/uri.hpp"
-#include "../headers/is_character_in_set.hpp"
-#include "../headers/percent_encoded_character_decoder.hpp"
+#include "character_in_set.hpp"
+#include "percent_encoded_character_decoder.hpp"
 
 #include <cstdint>
 #include <functional>
@@ -44,9 +44,9 @@ std::function<bool(char, bool)> LegalSchemeCheckStrategy()
     } else {
       if (*is_first_character) {
         *is_first_character = false;
-        return Uri::IsAlphabet(character);
+        return Uri::IsCharacterInSet(character, Uri::ALPHA);
       } else {
-        return Uri::IsUnreservedCharacter(character) && character != '~';
+        return Uri::IsCharacterInSet(character, Uri::SCHEME_NOT_FIRST);
       }
     }
   };
@@ -55,10 +55,12 @@ std::function<bool(char, bool)> LegalSchemeCheckStrategy()
 
 }// namespace
 
+
 namespace Uri {
 
 struct Uri::Implementation
 {
+
   std::string scheme;
   std::string user_name;
   std::string host;
@@ -154,8 +156,7 @@ struct Uri::Implementation
           percent_decoder = PercentEncodedCharacterDecoder();
           decode_state = hex_decode_character;
           break;
-        } else if (IsUnreservedCharacter(character) || IsSubDelimiter(character)
-                   || character == ':') {
+        } else if (IsCharacterInSet(character, USER_NAME)) {
           user_name.push_back(character);
           break;
         }
@@ -167,7 +168,6 @@ struct Uri::Implementation
           user_name.push_back(percent_decoder.GetDecodedCharacter());
           decode_state = normal_state;
         }
-        break;
       }
     }
     return decode_state == normal_state;
@@ -203,8 +203,7 @@ struct Uri::Implementation
           percent_decoder = PercentEncodedCharacterDecoder();
           decode_state = hex_decode_character;
           break;
-        } else if (IsUnreservedCharacter(character) || IsSubDelimiter(character)
-                   || character == ':') {
+        } else if (IsCharacterInSet(character, REG_NAME_NOT_PCT_ENCODED)) {
           host.push_back(character);
           break;
         }
@@ -267,7 +266,7 @@ struct Uri::Implementation
         return false;
 
       case IPvFuture_hexdigit:
-        if (IsHexDigit(character)) {
+        if (IsCharacterInSet(character, HEX_DIGIT)) {
           host.push_back(character);
           decode_state = IPvFuture_dot;
           break;
@@ -283,7 +282,7 @@ struct Uri::Implementation
         return false;
 
       case IPvFuture_last:
-        if (IsUnreservedCharacter(character) || character == ':') {
+        if (IsCharacterInSet(character, IPVFUTURE_LAST)) {
           host.push_back(character);
           decode_state = last_character;
           break;
@@ -372,8 +371,7 @@ struct Uri::Implementation
           percent_decoder = PercentEncodedCharacterDecoder();
           decode_state = hex_decode_character;
           break;
-        } else if (IsUnreservedCharacter(character) || IsSubDelimiter(character)
-                   || character == ':' || character == '@') {
+        } else if (IsCharacterInSet(character, PCHAR_NOT_PCT_ENCODED)) {
           segment.push_back(character);
           break;
         }
@@ -434,48 +432,32 @@ struct Uri::Implementation
     auto original_string = std::move(uri_string);
     uri_string.clear();
 
-    enum Decode_state { normal_state, first_digit_hex, second_digit_hex };
-    const int LETTER_DISPLACEMENT = 10;
-    const int HEX_DISPLACEMENT = 16;
+    enum Decode_state { normal_state, hex_decode_character };
 
     Decode_state decode_state = normal_state;
-    int decoded_character = 0;
+    PercentEncodedCharacterDecoder percent_decoder;
 
     for (auto character : original_string) {
 
       switch (decode_state) {
       case normal_state:
         if (character == '%') {
-          decode_state = first_digit_hex;
+          decode_state = hex_decode_character;
+          percent_decoder = PercentEncodedCharacterDecoder();
           break;
-        } else if (IsPcharCharacter(character) || character == ':'
-                   || character == '/' || character == '?') {
+        } else if (IsCharacterInSet(character, QUERY_OR_FRAGMENT)) {
           uri_string.push_back(character);
           break;
         }
         return false;
 
-      case first_digit_hex:
-        if (IsNumber(character)) {
-          decode_state = second_digit_hex;
-          decoded_character = character - '0';
-          break;
+      case hex_decode_character:
+        if (!percent_decoder.NextEncodedCharacter(character)) { return false; }
+        if (percent_decoder.Done()) {
+          uri_string.push_back(percent_decoder.GetDecodedCharacter());
+          decode_state = normal_state;
         }
-        return false;
-
-      case second_digit_hex:
-        decode_state = normal_state;
-        decoded_character *= HEX_DISPLACEMENT;
-        if (IsNumber(character)) {
-          decoded_character += character - '0';
-          uri_string.push_back(static_cast<char>(decoded_character));
-          break;
-        } else if (character >= 'A' && character <= 'F') {
-          decoded_character += character - 'A' + LETTER_DISPLACEMENT;
-          uri_string.push_back(static_cast<char>(decoded_character));
-          break;
-        }
-        return false;
+        break;
       }
     }
     return decode_state == normal_state;

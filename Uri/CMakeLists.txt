@@ -6,7 +6,7 @@ find_package(CLI11 CONFIG REQUIRED)
 add_library(UriLib
     src/uri.cpp
     src/percent_encoded_character_decoder.cpp
-    src/is_character_in_set.cpp
+    src/character_in_set.cpp
     )
 
 target_link_libraries(

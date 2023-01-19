@@ -1,5 +1,5 @@
-#include "../headers/percent_encoded_character_decoder.hpp"
-#include "../headers/is_character_in_set.hpp"
+#include "percent_encoded_character_decoder.hpp"
+#include "character_in_set.hpp"
 
 namespace Uri {
 
@@ -26,7 +26,7 @@ bool PercentEncodedCharacterDecoder::NextEncodedCharacter(char character)
   switch (impl_->decode_state) {
 
   case first_digit_hex:
-    if (IsNumber(character)) {
+    if (IsCharacterInSet(character, DIGITS)) {
       impl_->decode_state = second_digit_hex;
       impl_->decoded_character = character - '0';
       break;
@@ -36,7 +36,7 @@ bool PercentEncodedCharacterDecoder::NextEncodedCharacter(char character)
   case second_digit_hex:
     impl_->decode_state = done;
     impl_->decoded_character *= HEX_DISPLACEMENT;
-    if (IsNumber(character)) {
+    if (IsCharacterInSet(character, DIGITS)) {
       impl_->decoded_character += character - '0';
       break;
     } else if (character >= 'A' && character <= 'F') {
