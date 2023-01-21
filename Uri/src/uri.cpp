@@ -225,6 +225,7 @@ struct Uri::Implementation
       }
     }
 
+    host = NormalizeCaseInsensitiveString(host);
     return decode_state == normal_state;
   }
 
@@ -232,31 +233,16 @@ struct Uri::Implementation
   {
     enum States {
       first_character,
-      IP_literal,
       IPv6address,
-      IPvFuture_hexdigit,
-      IPvFuture_dot,
-      IPvFuture_last,
-      last_character,
     };
 
     States decode_state = first_character;
     for (auto character : coded_host) {
       switch (decode_state) {
       case first_character:
+        if (character == '[') { return DecodeIPvFuture(coded_host); }
         host.push_back(character);
-        decode_state = IP_literal;
         break;
-
-      case IP_literal:
-        if (character == 'v') {
-          decode_state = IPvFuture_hexdigit;
-          host.push_back(character);
-          break;
-        } else {
-          decode_state = IPv6address;
-        }
-        [[fallthrough]];
 
       case IPv6address:
         if (character == ']') {
@@ -264,44 +250,59 @@ struct Uri::Implementation
           break;
         }
         return false;
-
-      case IPvFuture_hexdigit:
-        if (IsCharacterInSet(character, HEX_DIGIT)) {
-          host.push_back(character);
-          decode_state = IPvFuture_dot;
-          break;
-        }
-        return false;
-
-      case IPvFuture_dot:
-        if (character == '.') {
-          host.push_back(character);
-          decode_state = IPvFuture_last;
-          break;
-        }
-        return false;
-
-      case IPvFuture_last:
-        if (IsCharacterInSet(character, IPVFUTURE_LAST)) {
-          host.push_back(character);
-          decode_state = last_character;
-          break;
-        }
-        return false;
-
-      case last_character:
-        if (character == ']' && host.back() != ']') {
-          host.push_back(character);
-          break;
-        }
-        [[fallthrough]];
-
-      default:
-        return false;
       }
     }
 
     return true;
+  }
+
+  bool DecodeIPvFuture(const std::string &coded_host)
+  {
+    enum States {
+      prefix,
+      hexdigit,
+      dot,
+      sufix,
+    };
+
+    States decode_state = prefix;
+
+    for (auto character : coded_host) {
+      switch (decode_state) {
+      case prefix:
+        if (character == '[') {
+          host.push_back(character);
+          break;
+        } else if (character == 'v') {
+          host.push_back(character);
+          decode_state = hexdigit;
+          break;
+        }
+        return false;
+      case hexdigit:
+        if (IsCharacterInSet(character, HEX_DIGIT)) {
+          host.push_back(character);
+          decode_state = dot;
+          break;
+        }
+        return false;
+      case dot:
+        if (character == '.') {
+          host.push_back(character);
+          decode_state = sufix;
+          break;
+        }
+        return false;
+      case sufix:
+        if (IsCharacterInSet(character, IPVFUTURE_LAST)) {
+          host.push_back(character);
+          break;
+        }
+        return false;
+      }
+    }
+
+    return host.back() == ']';
   }
 
   bool ParsePath(std::string &URL)

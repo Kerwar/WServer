@@ -89,7 +89,7 @@ inline const CharacterSet REG_NAME_NOT_PCT_ENCODED{
   ':',
 };
 inline const CharacterSet USER_NAME{ UNRESERVED, SUB_DELIMS, ':' };
-inline const CharacterSet IPVFUTURE_LAST{ UNRESERVED, SUB_DELIMS, ':' };
+inline const CharacterSet IPVFUTURE_LAST{ UNRESERVED, SUB_DELIMS, ':', ']' };
 inline const CharacterSet QUERY_OR_FRAGMENT{ PCHAR_NOT_PCT_ENCODED,
   ':',
   '?',

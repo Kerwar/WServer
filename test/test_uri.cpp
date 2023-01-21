@@ -330,6 +330,7 @@ TEST_CASE("Parse String for bad hosts", "Uri")
   const std::vector<std::string> test_uris{
     "//@www:example.com/",
     "//[vX.:]/",
+    "//[vF.u]r/",
   };
 
   for (const auto &test_uri : test_uris) {
@@ -351,7 +352,7 @@ TEST_CASE("Parse String with host corner cases", "Uri")
   };
 
   const std::vector<TestVector> testVectors{
-    { "//%41/", "A" },
+    { "//%41/", "a" },
     { "///", "" },
     { "//!/", "!" },
     { "//'/", "'" },
@@ -359,6 +360,7 @@ TEST_CASE("Parse String with host corner cases", "Uri")
     { "//;/", ";" },
     { "//1.2.3.4/", "1.2.3.4" },
     { "//[v7.:]/", "[v7.:]" },
+    { "//[v7.aB]/", "[v7.aB]" },
   };
 
   for (const auto &testVector : testVectors) {
@@ -367,6 +369,25 @@ TEST_CASE("Parse String with host corner cases", "Uri")
     INFO("Path in: " + testVector.path_in);
     REQUIRE(uri.ParseFromString(testVector.path_in));
     REQUIRE(testVector.host == uri.GetHost());
+  }
+}
+
+TEST_CASE("Parse String with hots in lowercase and uppercase", "Uri")
+{
+  const std::vector<std::string> testVectors{
+    { "http://www.example.com/" },
+    { "http://www.EXAMPLE.com/" },
+    { "HTTP://www.example.COM/" },
+    { "Http://www.exAMple.cOM/" },
+    { "HttP://wWw.ExAmpLe.com/" },
+  };
+
+  for (const auto &testVector : testVectors) {
+    Uri::Uri uri;
+
+    INFO(testVector);
+    REQUIRE(uri.ParseFromString(testVector));
+    REQUIRE("www.example.com" == uri.GetHost());
   }
 }
 
