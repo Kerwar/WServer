@@ -213,6 +213,25 @@ TEST_CASE("Parse String with user info ", "Uri")
   }
 }
 
+TEST_CASE("Parse String with scheme in lowercase and uppercase", "Uri")
+{
+  const std::vector<std::string> testVectors{
+    { "http://www.example.com/" },
+    { "hTtp://www.example.com/" },
+    { "HTTP://www.example.com/" },
+    { "Http://www.example.com/" },
+    { "HttP://www.example.com/" },
+  };
+
+  for (const auto &testVector : testVectors) {
+    Uri::Uri uri;
+
+    INFO(testVector);
+    REQUIRE(uri.ParseFromString(testVector));
+    REQUIRE("http" == uri.GetScheme());
+  }
+}
+
 TEST_CASE("Parse String with scheme corner cases", "Uri")
 {
   struct TestVector
@@ -265,7 +284,6 @@ TEST_CASE("Parse String for bad usernames because illegal characters", "Uri")
 {
   const std::vector<std::string> test_uris{
     "//%X@www.example.com/",
-    "//%F5@www.example.com/",
     "//%5@www.example.com/",
     "//%5G@www.example.com/",
     "//{@www.example.com/",
@@ -480,5 +498,34 @@ TEST_CASE("Parse String with query corner cases", "Uri")
     INFO("Path in: " + testVector.path_in);
     REQUIRE(uri.ParseFromString(testVector.path_in));
     REQUIRE(testVector.query == uri.GetQuery());
+  }
+}
+
+TEST_CASE("Parse String with percent encode characters", "Uri")
+{
+  struct TestVector
+  {
+    std::string path_in;
+    std::string path_first_segment;
+  };
+
+  const std::vector<TestVector> testVectors{
+    { "%41", "A" },
+    { "%4A", "J" },
+    { "%4a", "J" },
+    { "%bc", "\xbc" },
+    { "%Bc", "\xbc" },
+    { "%bC", "\xbc" },
+    { "%BC", "\xbc" },
+    { "%41%42%43", "ABC" },
+    { "%41%4A%43%4b", "AJCK" },
+  };
+
+  for (const auto &testVector : testVectors) {
+    Uri::Uri uri;
+
+    INFO("Path in: " + testVector.path_in);
+    REQUIRE(uri.ParseFromString(testVector.path_in));
+    REQUIRE(testVector.path_first_segment == uri.GetPath()[0]);
   }
 }

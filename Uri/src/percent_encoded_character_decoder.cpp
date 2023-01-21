@@ -26,9 +26,15 @@ bool PercentEncodedCharacterDecoder::NextEncodedCharacter(char character)
   switch (impl_->decode_state) {
 
   case first_digit_hex:
-    if (IsCharacterInSet(character, DIGITS)) {
       impl_->decode_state = second_digit_hex;
+    if (IsCharacterInSet(character, DIGITS)) {
       impl_->decoded_character = character - '0';
+      break;
+    } else if (IsCharacterInSet(character, CharacterSet('a', 'f'))) {
+      impl_->decoded_character += character - 'a' + LETTER_DISPLACEMENT;
+      break;
+    } else if (IsCharacterInSet(character, CharacterSet('A', 'F'))) {
+      impl_->decoded_character += character - 'A' + LETTER_DISPLACEMENT;
       break;
     }
     return false;
@@ -39,7 +45,10 @@ bool PercentEncodedCharacterDecoder::NextEncodedCharacter(char character)
     if (IsCharacterInSet(character, DIGITS)) {
       impl_->decoded_character += character - '0';
       break;
-    } else if (character >= 'A' && character <= 'F') {
+    } else if (IsCharacterInSet(character, CharacterSet('a', 'f'))) {
+      impl_->decoded_character += character - 'a' + LETTER_DISPLACEMENT;
+      break;
+    } else if (IsCharacterInSet(character, CharacterSet('A', 'F'))) {
       impl_->decoded_character += character - 'A' + LETTER_DISPLACEMENT;
       break;
     }

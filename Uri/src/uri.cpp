@@ -1,5 +1,6 @@
-#include "../headers/uri.hpp"
+#include "uri.hpp"
 #include "character_in_set.hpp"
+#include "normalize_case_insensitive_string.hpp"
 #include "percent_encoded_character_decoder.hpp"
 
 #include <cstdint>
@@ -52,9 +53,7 @@ std::function<bool(char, bool)> LegalSchemeCheckStrategy()
   };
 }
 
-
 }// namespace
-
 
 namespace Uri {
 
@@ -80,6 +79,7 @@ struct Uri::Implementation
       return true;
     } else {
       scheme = uri_string.substr(0, scheme_end);
+      scheme = NormalizeCaseInsensitiveString(scheme);
       return !FailsMatch(scheme, LegalSchemeCheckStrategy());
     }
   }
