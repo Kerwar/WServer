@@ -19,6 +19,8 @@ public:
 
   Uri();
 
+  bool operator==(const Uri &other) const;
+  bool operator!=(const Uri &other) const;
   /*
    * This method parses the values from a string
    *

@@ -397,6 +397,19 @@ Uri::~Uri() = default;
 
 Uri::Uri() : impl_(new Implementation) {}
 
+bool Uri::operator==(const Uri &other) const
+{
+  return impl_->scheme == other.impl_->scheme
+         && impl_->user_name == other.impl_->user_name
+         && impl_->host == other.impl_->host && impl_->port == other.impl_->port
+         && impl_->has_port == other.impl_->has_port
+         && impl_->path == other.impl_->path
+         && impl_->query == other.impl_->query
+         && impl_->fragment == other.impl_->fragment;
+};
+
+bool Uri::operator!=(const Uri &other) const { return !(*this == other); }
+
 bool Uri::ParseFromString(const std::string &uri_string)
 {
   if (!impl_->ParseScheme(uri_string)) { return false; }

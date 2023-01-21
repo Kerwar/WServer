@@ -574,3 +574,17 @@ TEST_CASE("Normalize path", "Uri")
     REQUIRE(testVector.path == uri.GetPath());
   }
 }
+
+TEST_CASE("Normalization and equivalent uri", "Uri")
+{
+  Uri::Uri uri1;
+  Uri::Uri uri2;
+
+  REQUIRE(uri1.ParseFromString("example://a/b/c/%7Bfoo%7D"));
+  REQUIRE(uri2.ParseFromString("eXAMPLe://a/./b/../b/%63/%7bfoo%7d"));
+
+
+  REQUIRE(uri1 != uri2);
+  uri2.NormalizePath();
+  REQUIRE(uri1 == uri2);
+}
