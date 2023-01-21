@@ -175,6 +175,7 @@ TEST_CASE("Parse String with query and fragment", "Uri")
       "foo?earth",
       "bar" },
     { "https://www.example.com/spam?foo#bar", "www.example.com", "foo", "bar" },
+    { "/?foo#bar", "", "foo", "bar" },
   };
 
   for (const auto &testVector : testVectors) {
@@ -199,7 +200,7 @@ TEST_CASE("Parse String with user info ", "Uri")
   const std::vector<TestVector> testVectors{
     { "https://www.example.com/", "" },
     { "https://joe@www.example.com", "joe" },
-    // { "joe@www.example.com:8080", "joe" },
+    { "//joe@www.example.com:8080", "joe" },
     // { "https://joe@www.example.com:8080", "joe" },
   };
 
@@ -209,6 +210,25 @@ TEST_CASE("Parse String with user info ", "Uri")
     INFO(testVector.path_in);
     REQUIRE(uri.ParseFromString(testVector.path_in));
     REQUIRE(testVector.username == uri.GetUserName());
+  }
+}
+
+TEST_CASE("Parse String with scheme in lowercase and uppercase", "Uri")
+{
+  const std::vector<std::string> testVectors{
+    { "http://www.example.com/" },
+    { "hTtp://www.example.com/" },
+    { "HTTP://www.example.com/" },
+    { "Http://www.example.com/" },
+    { "HttP://www.example.com/" },
+  };
+
+  for (const auto &testVector : testVectors) {
+    Uri::Uri uri;
+
+    INFO(testVector);
+    REQUIRE(uri.ParseFromString(testVector));
+    REQUIRE("http" == uri.GetScheme());
   }
 }
 
@@ -264,7 +284,6 @@ TEST_CASE("Parse String for bad usernames because illegal characters", "Uri")
 {
   const std::vector<std::string> test_uris{
     "//%X@www.example.com/",
-    "//%F5@www.example.com/",
     "//%5@www.example.com/",
     "//%5G@www.example.com/",
     "//{@www.example.com/",
@@ -304,4 +323,268 @@ TEST_CASE("Parse String with user name with corner cases", "Uri")
     REQUIRE(uri.ParseFromString(testVector.path_in));
     REQUIRE(testVector.user_name == uri.GetUserName());
   }
+}
+
+TEST_CASE("Parse String for bad hosts", "Uri")
+{
+  const std::vector<std::string> test_uris{
+    "//@www:example.com/",
+    "//[vX.:]/",
+    "//[vF.u]r/",
+  };
+
+  for (const auto &test_uri : test_uris) {
+
+    Uri::Uri uri;
+
+    INFO("Path in: " + test_uri);
+    REQUIRE_FALSE(uri.ParseFromString(test_uri));
+  }
+}
+
+
+TEST_CASE("Parse String with host corner cases", "Uri")
+{
+  struct TestVector
+  {
+    std::string path_in;
+    std::string host;
+  };
+
+  const std::vector<TestVector> testVectors{
+    { "//%41/", "a" },
+    { "///", "" },
+    { "//!/", "!" },
+    { "//'/", "'" },
+    { "//(/", "(" },
+    { "//;/", ";" },
+    { "//1.2.3.4/", "1.2.3.4" },
+    { "//[v7.:]/", "[v7.:]" },
+    { "//[v7.aB]/", "[v7.aB]" },
+  };
+
+  for (const auto &testVector : testVectors) {
+    Uri::Uri uri;
+
+    INFO("Path in: " + testVector.path_in);
+    REQUIRE(uri.ParseFromString(testVector.path_in));
+    REQUIRE(testVector.host == uri.GetHost());
+  }
+}
+
+TEST_CASE("Parse String with hots in lowercase and uppercase", "Uri")
+{
+  const std::vector<std::string> testVectors{
+    { "http://www.example.com/" },
+    { "http://www.EXAMPLE.com/" },
+    { "HTTP://www.example.COM/" },
+    { "Http://www.exAMple.cOM/" },
+    { "HttP://wWw.ExAmpLe.com/" },
+  };
+
+  for (const auto &testVector : testVectors) {
+    Uri::Uri uri;
+
+    INFO(testVector);
+    REQUIRE(uri.ParseFromString(testVector));
+    REQUIRE("www.example.com" == uri.GetHost());
+  }
+}
+
+TEST_CASE("Parse String missinterpret colon", "Uri")
+{
+
+  const std::vector<std::string> test_uris{
+    "//foo:bar@www.example.com/",
+    "//www.example.com/a:b",
+    "//www.example.com/foo?a:b",
+    "//www.example.com/foo#a:b",
+    "//[v7.:]/",
+  };
+
+  for (const auto &test_uri : test_uris) {
+
+    Uri::Uri uri;
+
+    INFO("Path in: " + test_uri);
+    REQUIRE(uri.ParseFromString(test_uri));
+  }
+}
+
+TEST_CASE("Parse String for bad path", "Uri")
+{
+  const std::vector<std::string> test_uris{
+    "//www.example.com/foo[bar",
+    "//www.example.com/]bar",
+    "//www.example.com/foo[",
+    "//www.example.com/]",
+    "//www.example.com/foo[bar",
+    "//www.example.com/foo/[bar",
+    "//www.example.com/foo[bar/",
+    "//www.example.com/foo/[/",
+    "/foo[bar",
+    "/]bar",
+    "/foo[",
+    "/]",
+    "/foo[bar",
+    "/foo/[bar",
+    "/foo[bar/",
+    "/foo/[/",
+  };
+
+  for (const auto &test_uri : test_uris) {
+
+    Uri::Uri uri;
+
+    INFO("Path in: " + test_uri);
+    REQUIRE_FALSE(uri.ParseFromString(test_uri));
+  }
+}
+
+TEST_CASE("Parse String with path corner cases", "Uri")
+{
+  struct TestVector
+  {
+    std::string path_in;
+    std::vector<std::string> path;
+  };
+
+  const std::vector<TestVector> testVectors{
+    { "/:/foo", { "", ":", "foo" } },
+    { "bob@/foo", { "bob@", "foo" } },
+    { "hello!", { "hello!" } },
+    { "urn:hello,%20w%6Frld", { "hello, world" } },
+    { "//example.xom/foo/(bar", { "", "foo", "(bar" } },
+  };
+
+  for (const auto &testVector : testVectors) {
+    Uri::Uri uri;
+
+    INFO("Path in: " + testVector.path_in);
+    REQUIRE(uri.ParseFromString(testVector.path_in));
+    REQUIRE(testVector.path == uri.GetPath());
+  }
+}
+
+TEST_CASE("Parse String for bad query because illegal characters", "Uri")
+{
+  const std::vector<std::string> test_uris{
+    "//www.example.com?foo[bar",
+    "//www.example.com?]bar",
+    "//www.example.com?foo[",
+    "//www.example.com?]",
+    "//www.example.com?foo[bar",
+    "//www.example.com?foo/[bar",
+    "//www.example.com?foo[bar/",
+    "//www.example.com/foo?[/",
+    "?foo[bar",
+    "?]bar",
+    "?foo[",
+    "?]",
+    "?foo[bar",
+    "?foo/[bar",
+    "?foo[bar/",
+    "/foo?[/",
+  };
+
+  for (const auto &test_uri : test_uris) {
+
+    Uri::Uri uri;
+
+    INFO("Path in: " + test_uri);
+    REQUIRE_FALSE(uri.ParseFromString(test_uri));
+  }
+}
+
+TEST_CASE("Parse String with query corner cases", "Uri")
+{
+  struct TestVector
+  {
+    std::string path_in;
+    std::string query;
+  };
+
+  const std::vector<TestVector> testVectors{
+    { "/?:/foo", ":/foo" },
+    { "?bob@/foo", "bob@/foo" },
+    { "?hello!", "hello!" },
+    { "urn:?hello,%20w%6Frld", "hello, world" },
+    { "//example.com/foo?(bar)", "(bar)" },
+    { "//example.com?foo?(bar)", "foo?(bar)" },
+  };
+
+  for (const auto &testVector : testVectors) {
+    Uri::Uri uri;
+
+    INFO("Path in: " + testVector.path_in);
+    REQUIRE(uri.ParseFromString(testVector.path_in));
+    REQUIRE(testVector.query == uri.GetQuery());
+  }
+}
+
+TEST_CASE("Parse String with percent encode characters", "Uri")
+{
+  struct TestVector
+  {
+    std::string path_in;
+    std::string path_first_segment;
+  };
+
+  const std::vector<TestVector> testVectors{
+    { "%41", "A" },
+    { "%4A", "J" },
+    { "%4a", "J" },
+    { "%bc", "\xbc" },
+    { "%Bc", "\xbc" },
+    { "%bC", "\xbc" },
+    { "%BC", "\xbc" },
+    { "%41%42%43", "ABC" },
+    { "%41%4A%43%4b", "AJCK" },
+  };
+
+  for (const auto &testVector : testVectors) {
+    Uri::Uri uri;
+
+    INFO("Path in: " + testVector.path_in);
+    REQUIRE(uri.ParseFromString(testVector.path_in));
+    REQUIRE(testVector.path_first_segment == uri.GetPath()[0]);
+  }
+}
+
+TEST_CASE("Normalize path", "Uri")
+{
+  struct TestVector
+  {
+    std::string path_in;
+    std::vector<std::string> path;
+  };
+
+  const std::vector<TestVector> testVectors{
+    { "/a/b/c/./../../g", { "", "a", "g" } },
+    { "mid/constent=5/../6", { "mid", "6" } },
+    { "../mid/constent=5/../6", { "mid", "6" } },
+  };
+
+  for (const auto &testVector : testVectors) {
+    Uri::Uri uri;
+
+    INFO("Path in: " + testVector.path_in);
+    REQUIRE(uri.ParseFromString(testVector.path_in));
+    uri.NormalizePath();
+    REQUIRE(testVector.path == uri.GetPath());
+  }
+}
+
+TEST_CASE("Normalization and equivalent uri", "Uri")
+{
+  Uri::Uri uri1;
+  Uri::Uri uri2;
+
+  REQUIRE(uri1.ParseFromString("example://a/b/c/%7Bfoo%7D"));
+  REQUIRE(uri2.ParseFromString("eXAMPLe://a/./b/../b/%63/%7bfoo%7d"));
+
+
+  REQUIRE(uri1 != uri2);
+  uri2.NormalizePath();
+  REQUIRE(uri1 == uri2);
 }
