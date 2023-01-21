@@ -445,4 +445,21 @@ bool Uri::IsRelativePath() const
   }
 }
 
+void Uri::NormalizePath()
+{
+  auto old_path = std::move(impl_->path);
+
+  impl_->path.clear();
+
+  while (!old_path.empty()) {
+    if (old_path[0] == "." || (old_path[0] == ".." && impl_->path.empty())) {
+    } else if (old_path[0] == ".." && !impl_->path.empty()) {
+      impl_->path.pop_back();
+    } else {
+      impl_->path.push_back(old_path[0]);
+    }
+    old_path.erase(old_path.begin());
+  }
+}
+
 }// namespace Uri

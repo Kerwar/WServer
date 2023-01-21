@@ -550,3 +550,27 @@ TEST_CASE("Parse String with percent encode characters", "Uri")
     REQUIRE(testVector.path_first_segment == uri.GetPath()[0]);
   }
 }
+
+TEST_CASE("Normalize path", "Uri")
+{
+  struct TestVector
+  {
+    std::string path_in;
+    std::vector<std::string> path;
+  };
+
+  const std::vector<TestVector> testVectors{
+    { "/a/b/c/./../../g", { "", "a", "g" } },
+    { "mid/constent=5/../6", { "mid", "6" } },
+    { "../mid/constent=5/../6", { "mid", "6" } },
+  };
+
+  for (const auto &testVector : testVectors) {
+    Uri::Uri uri;
+
+    INFO("Path in: " + testVector.path_in);
+    REQUIRE(uri.ParseFromString(testVector.path_in));
+    uri.NormalizePath();
+    REQUIRE(testVector.path == uri.GetPath());
+  }
+}

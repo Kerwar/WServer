@@ -37,7 +37,7 @@ target_link_libraries(catch_main PRIVATE myproject::project_options)
 
 add_executable(test_uri test_uri.cpp)
 target_link_libraries(test_uri PRIVATE catch_main UriLib) # myproject::project_warnings myproject::project_options catch_main UriLib)
-set_target_properties(test_uri PROPERTIES RUNTIME_OUTPUT_DIRECTORY_DEBUG ".." RUNTIME_OUTPUT_DIRECTORY_RELEASE "..")
+set_target_properties(test_uri PROPERTIES  RUNTIME_OUTPUT_DIRECTORY_DEBUG ".." RUNTIME_OUTPUT_DIRECTORY_RELEASE "..")
 # automatically discover test that are defined in catch based test files you can modify the unittests. Set TEST_PREFIX
 # to whatever you want, or use different for different binaries
 catch_discover_tests(

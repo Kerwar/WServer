@@ -41,13 +41,12 @@ public:
    * */
   [[nodiscard]] std::string GetScheme() const;
 
-/*
+  /*
    * This method returns the user name
    *
    * std::string the username
    * */
   [[nodiscard]] std::string GetUserName() const;
-
 
 
   /*
@@ -90,7 +89,7 @@ public:
 
   /*
    * This method returns the query
-   * 
+   *
    * std::string the query
    * */
   [[nodiscard]] std::string GetQuery() const;
@@ -111,7 +110,7 @@ public:
   [[nodiscard]] bool IsRelativeReference() const;
 
   /*
-   * This method returns an indication of whether or not the URI contains a 
+   * This method returns an indication of whether or not the URI contains a
    * relative path
    *
    * @return
@@ -119,11 +118,19 @@ public:
    * */
   [[nodiscard]] bool IsRelativePath() const;
 
+  /*
+   * This method applies the "remove_dot_segments" routine talked about
+   * in  RFC 3986 (https://tools.ietf.org/hotml/rfc3986) to the path
+   * segments of the URI in order to normalize the path
+   * (apply and remove . and .. segments)
+   *
+   */
+  void NormalizePath();
+
 private:
   struct Implementation;
 
   std::unique_ptr<Implementation> impl_;
-
 };
 }// namespace Uri
 
