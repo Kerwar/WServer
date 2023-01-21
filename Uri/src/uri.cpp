@@ -102,10 +102,10 @@ struct Uri::Implementation
     if (user_delimiter == std::string::npos) {
       user_name.clear();
     } else {
-      auto coded_user_name = authority.substr(0, user_delimiter);
+      user_name = authority.substr(0, user_delimiter);
       authority = authority.substr(user_delimiter + 1);
 
-      if (!UncodeUserName(coded_user_name)) { return false; }
+      if (!DecodeElement(user_name, USER_NAME)) { return false; }
     }
 
     auto port_delimiter = authority.find(':');
@@ -140,37 +140,6 @@ struct Uri::Implementation
       has_port = true;
     }
     return true;
-  }
-
-  bool UncodeUserName(const std::string &coded_user_name)
-  {
-    enum Decode_state { normal_state, hex_decode_character };
-
-    Decode_state decode_state = normal_state;
-    PercentEncodedCharacterDecoder percent_decoder;
-
-    for (auto character : coded_user_name) {
-      switch (decode_state) {
-      case normal_state:
-        if (character == '%') {
-          percent_decoder = PercentEncodedCharacterDecoder();
-          decode_state = hex_decode_character;
-          break;
-        } else if (USER_NAME.Contains(character)) {
-          user_name.push_back(character);
-          break;
-        }
-        return false;
-
-      case hex_decode_character:
-        if (!percent_decoder.NextEncodedCharacter(character)) { return false; }
-        if (percent_decoder.Done()) {
-          user_name.push_back(percent_decoder.GetDecodedCharacter());
-          decode_state = normal_state;
-        }
-      }
-    }
-    return decode_state == normal_state;
   }
 
   bool UncodeHost(const std::string &coded_host)
@@ -315,6 +284,7 @@ struct Uri::Implementation
     path.clear();
     if (URL == "/") {
       path.emplace_back("");
+      URL.clear();
       return true;
     }
 
@@ -348,47 +318,10 @@ struct Uri::Implementation
     }
 
     for (auto &segment : path) {
-      if (!DecodeSegmentPath(segment)) { return false; }
+      if (!DecodeElement(segment, PCHAR_NOT_PCT_ENCODED)) { return false; }
     }
 
     return true;
-  }
-
-  bool static DecodeSegmentPath(std::string &segment)
-  {
-    const auto original_segment = std::move(segment);
-    segment.clear();
-
-    enum Decode_state { normal_state, hex_decode_character };
-
-    PercentEncodedCharacterDecoder percent_decoder;
-    Decode_state decode_state = normal_state;
-
-    for (auto character : original_segment) {
-
-      switch (decode_state) {
-      case normal_state:
-        if (character == '%') {
-          percent_decoder = PercentEncodedCharacterDecoder();
-          decode_state = hex_decode_character;
-          break;
-        } else if (PCHAR_NOT_PCT_ENCODED.Contains(character)) {
-          segment.push_back(character);
-          break;
-        }
-        return false;
-
-      case hex_decode_character:
-        if (!percent_decoder.NextEncodedCharacter(character)) { return false; }
-        if (percent_decoder.Done()) {
-          segment.push_back(percent_decoder.GetDecodedCharacter());
-          decode_state = normal_state;
-        }
-        break;
-      }
-    }
-
-    return decode_state == normal_state;
   }
 
   bool ParseQueryAndFragment(const std::string &uri_string)
@@ -403,14 +336,14 @@ struct Uri::Implementation
         query.clear();
       } else {
         query = uri_string.substr(query_delimiter + 1);
-        if (!DecodeQueryOrFragment(query)) {
+        if (!DecodeElement(query, QUERY_OR_FRAGMENT)) {
           query.clear();
           return false;
         }
       }
     } else {
       fragment = uri_string.substr(fragment_delimiter + 1);
-      if (!DecodeQueryOrFragment(fragment)) {
+      if (!DecodeElement(fragment, QUERY_OR_FRAGMENT)) {
         fragment.clear();
         return false;
       }
@@ -419,7 +352,7 @@ struct Uri::Implementation
       } else {
         query = uri_string.substr(
           query_delimiter + 1, fragment_delimiter - query_delimiter - 1);
-        if (!DecodeQueryOrFragment(query)) {
+        if (!DecodeElement(query, QUERY_OR_FRAGMENT)) {
           query.clear();
           return false;
         }
@@ -428,40 +361,35 @@ struct Uri::Implementation
     return true;
   }
 
-  bool static DecodeQueryOrFragment(std::string &uri_string)
+  bool static DecodeElement(std::string &element,
+    const CharacterSet &allowed_characters)
   {
-    auto original_string = std::move(uri_string);
-    uri_string.clear();
+    auto coded_string = std::move(element);
+    element.clear();
 
-    enum Decode_state { normal_state, hex_decode_character };
-
-    Decode_state decode_state = normal_state;
     PercentEncodedCharacterDecoder percent_decoder;
+    bool decoding_percent_charcater = false;
 
-    for (auto character : original_string) {
+    for (auto character : coded_string) {
 
-      switch (decode_state) {
-      case normal_state:
-        if (character == '%') {
-          decode_state = hex_decode_character;
-          percent_decoder = PercentEncodedCharacterDecoder();
-          break;
-        } else if (QUERY_OR_FRAGMENT.Contains(character)) {
-          uri_string.push_back(character);
-          break;
-        }
-        return false;
-
-      case hex_decode_character:
+      if (decoding_percent_charcater) {
         if (!percent_decoder.NextEncodedCharacter(character)) { return false; }
         if (percent_decoder.Done()) {
-          uri_string.push_back(percent_decoder.GetDecodedCharacter());
-          decode_state = normal_state;
+          decoding_percent_charcater = false;
+          element.push_back(percent_decoder.GetDecodedCharacter());
         }
-        break;
+      } else {
+        if (character == '%') {
+          percent_decoder = PercentEncodedCharacterDecoder();
+          decoding_percent_charcater = true;
+        } else {
+          if (!allowed_characters.Contains(character)) { return false; }
+          element.push_back(character);
+        }
       }
     }
-    return decode_state == normal_state;
+
+    return !decoding_percent_charcater;
   }
 };
 
