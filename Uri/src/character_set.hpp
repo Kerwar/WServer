@@ -95,7 +95,6 @@ inline const CharacterSet QUERY_OR_FRAGMENT{ PCHAR_NOT_PCT_ENCODED,
   '?',
   '/' };
 
-bool IsCharacterInSet(char character, const CharacterSet &character_set);
 }// namespace Uri
 
 #endif// !URI_IS_CHARACTER_IN_SET

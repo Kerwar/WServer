@@ -27,13 +27,13 @@ bool PercentEncodedCharacterDecoder::NextEncodedCharacter(char character)
 
   case first_digit_hex:
       impl_->decode_state = second_digit_hex;
-    if (IsCharacterInSet(character, DIGITS)) {
+    if (DIGITS.Contains(character)) {
       impl_->decoded_character = character - '0';
       break;
-    } else if (IsCharacterInSet(character, CharacterSet('a', 'f'))) {
+    } else if (CharacterSet('a', 'f').Contains(character)) {
       impl_->decoded_character += character - 'a' + LETTER_DISPLACEMENT;
       break;
-    } else if (IsCharacterInSet(character, CharacterSet('A', 'F'))) {
+    } else if (CharacterSet('A', 'F').Contains(character)) {
       impl_->decoded_character += character - 'A' + LETTER_DISPLACEMENT;
       break;
     }
@@ -42,13 +42,13 @@ bool PercentEncodedCharacterDecoder::NextEncodedCharacter(char character)
   case second_digit_hex:
     impl_->decode_state = done;
     impl_->decoded_character *= HEX_DISPLACEMENT;
-    if (IsCharacterInSet(character, DIGITS)) {
+    if (DIGITS.Contains(character)) {
       impl_->decoded_character += character - '0';
       break;
-    } else if (IsCharacterInSet(character, CharacterSet('a', 'f'))) {
+    } else if (CharacterSet('a', 'f').Contains(character)) {
       impl_->decoded_character += character - 'a' + LETTER_DISPLACEMENT;
       break;
-    } else if (IsCharacterInSet(character, CharacterSet('A', 'F'))) {
+    } else if (CharacterSet('A', 'F').Contains(character)) {
       impl_->decoded_character += character - 'A' + LETTER_DISPLACEMENT;
       break;
     }

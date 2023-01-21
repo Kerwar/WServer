@@ -45,9 +45,9 @@ std::function<bool(char, bool)> LegalSchemeCheckStrategy()
     } else {
       if (*is_first_character) {
         *is_first_character = false;
-        return Uri::IsCharacterInSet(character, Uri::ALPHA);
+        return Uri::ALPHA.Contains(character);
       } else {
-        return Uri::IsCharacterInSet(character, Uri::SCHEME_NOT_FIRST);
+        return Uri::SCHEME_NOT_FIRST.Contains(character);
       }
     }
   };
@@ -156,7 +156,7 @@ struct Uri::Implementation
           percent_decoder = PercentEncodedCharacterDecoder();
           decode_state = hex_decode_character;
           break;
-        } else if (IsCharacterInSet(character, USER_NAME)) {
+        } else if (USER_NAME.Contains(character)) {
           user_name.push_back(character);
           break;
         }
@@ -203,7 +203,7 @@ struct Uri::Implementation
           percent_decoder = PercentEncodedCharacterDecoder();
           decode_state = hex_decode_character;
           break;
-        } else if (IsCharacterInSet(character, REG_NAME_NOT_PCT_ENCODED)) {
+        } else if (REG_NAME_NOT_PCT_ENCODED.Contains(character)) {
           host.push_back(character);
           break;
         }
@@ -280,7 +280,7 @@ struct Uri::Implementation
         }
         return false;
       case hexdigit:
-        if (IsCharacterInSet(character, HEX_DIGIT)) {
+        if (HEX_DIGIT.Contains(character)) {
           host.push_back(character);
           decode_state = dot;
           break;
@@ -294,7 +294,7 @@ struct Uri::Implementation
         }
         return false;
       case sufix:
-        if (IsCharacterInSet(character, IPVFUTURE_LAST)) {
+        if (IPVFUTURE_LAST.Contains(character)) {
           host.push_back(character);
           break;
         }
@@ -372,7 +372,7 @@ struct Uri::Implementation
           percent_decoder = PercentEncodedCharacterDecoder();
           decode_state = hex_decode_character;
           break;
-        } else if (IsCharacterInSet(character, PCHAR_NOT_PCT_ENCODED)) {
+        } else if (PCHAR_NOT_PCT_ENCODED.Contains(character)) {
           segment.push_back(character);
           break;
         }
@@ -446,7 +446,7 @@ struct Uri::Implementation
           decode_state = hex_decode_character;
           percent_decoder = PercentEncodedCharacterDecoder();
           break;
-        } else if (IsCharacterInSet(character, QUERY_OR_FRAGMENT)) {
+        } else if (QUERY_OR_FRAGMENT.Contains(character)) {
           uri_string.push_back(character);
           break;
         }

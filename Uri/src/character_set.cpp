@@ -52,9 +52,4 @@ bool CharacterSet::Contains(char character) const
          != impl_->character_in_set.end();
 }
 
-bool IsCharacterInSet(char character, const CharacterSet &set)
-{
-  return set.Contains(character);
-}
-
 }// namespace Uri
