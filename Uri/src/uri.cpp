@@ -467,7 +467,9 @@ void Uri::NormalizePath()
   while (!old_path.empty()) {
     if (old_path[0] == "." || (old_path[0] == ".." && impl_->path.empty())) {
     } else if (old_path[0] == ".." && !impl_->path.empty()) {
+        if(impl_->path[0].empty() && impl_->path.size() == 1 ){} else{
       impl_->path.pop_back();
+        }
     } else {
       impl_->path.push_back(old_path[0]);
     }
