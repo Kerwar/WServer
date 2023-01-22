@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -13,14 +14,16 @@ class Uri
 public:
   ~Uri();
   Uri(const Uri &) = delete;
-  Uri(Uri &&) = delete;
+  Uri(Uri &&) noexcept;
   Uri &operator=(const Uri &) = delete;
-  Uri &operator=(Uri &&) = delete;
+  Uri &operator=(Uri &&) noexcept;
 
   Uri();
 
   bool operator==(const Uri &other) const;
   bool operator!=(const Uri &other) const;
+
+  friend std::ostream &operator<<(std::ostream &out_stream, const Uri &uri);
   /*
    * This method parses the values from a string
    *
@@ -129,11 +132,24 @@ public:
    */
   void NormalizePath();
 
+  /*
+   * This method resolves the given relative reference based on the
+   * base URI returning the resolverd target URI
+   *
+   * @param[in] relative_reference
+   *    This describes how to get to the target starting at the base
+   *
+   * @return
+   *    The resolved target URI
+   */
+  [[nodiscard]] Uri Resolve(const Uri &relative_reference) const;
+
 private:
   struct Implementation;
 
   std::unique_ptr<Implementation> impl_;
 };
+
 }// namespace Uri
 
 #endif

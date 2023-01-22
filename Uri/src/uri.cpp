@@ -410,6 +410,28 @@ bool Uri::operator==(const Uri &other) const
 
 bool Uri::operator!=(const Uri &other) const { return !(*this == other); }
 
+std::ostream &operator<<(std::ostream &out_stream, const Uri &uri)
+{
+  out_stream << "Scheme: " << uri.impl_->scheme << "\n";
+  out_stream << "User name: " << uri.impl_->user_name << "\n";
+  out_stream << "Host: " << uri.impl_->host << "\n";
+  out_stream << "Port: " << uri.impl_->port << "\n";
+  out_stream << "Path: ";
+  for (const auto &segment : uri.impl_->path) {
+    out_stream << segment;
+    if (segment != uri.impl_->path.back()) {
+      out_stream << "/";
+    } else {
+      out_stream << "\n";
+    }
+  }
+  if (uri.impl_->path.empty()) { out_stream << "\n"; }
+  out_stream << "Query: " << uri.impl_->query << "\n";
+  out_stream << "Fragment " << uri.impl_->fragment << "\n";
+
+  return out_stream;
+}
+
 bool Uri::ParseFromString(const std::string &uri_string)
 {
   if (!impl_->ParseScheme(uri_string)) { return false; }
@@ -423,6 +445,10 @@ bool Uri::ParseFromString(const std::string &uri_string)
   }
 
   if (!impl_->ParsePath(uri_left)) { return false; }
+
+  if (!impl_->scheme.empty() && impl_->path.empty()) {
+    impl_->path.emplace_back("");
+  }
 
   if (!uri_left.empty()) {
     if (!impl_->ParseQueryAndFragment(uri_left)) { return false; };
@@ -476,6 +502,61 @@ void Uri::NormalizePath()
     }
     old_path.erase(old_path.begin());
   }
+}
+
+Uri Uri::Resolve(const Uri &relative_reference) const
+{
+  Uri target;
+
+  if (!relative_reference.impl_->scheme.empty()) {
+    target.impl_->scheme = relative_reference.impl_->scheme;
+    target.impl_->host = relative_reference.impl_->host;
+    target.impl_->user_name = relative_reference.impl_->user_name;
+    target.impl_->port = relative_reference.impl_->port;
+    target.impl_->path = relative_reference.impl_->path;
+    target.NormalizePath();
+    target.impl_->query = relative_reference.impl_->query;
+  } else {
+    if (!relative_reference.impl_->host.empty()) {
+      target.impl_->host = relative_reference.impl_->host;
+      target.impl_->user_name = relative_reference.impl_->user_name;
+      target.impl_->port = relative_reference.impl_->port;
+      target.impl_->path = relative_reference.impl_->path;
+      target.NormalizePath();
+      target.impl_->query = relative_reference.impl_->query;
+    } else {
+      if (relative_reference.impl_->path.empty()) {
+        target.impl_->path = relative_reference.impl_->path;
+        if (!relative_reference.impl_->query.empty()) {
+          target.impl_->query = relative_reference.impl_->query;
+        } else {
+          target.impl_->query = impl_->query;
+        }
+      } else {
+        if (!relative_reference.impl_->path.empty()
+            && relative_reference.impl_->path[0].empty()) {
+          target.impl_->path = relative_reference.impl_->path;
+          target.NormalizePath();
+        } else {
+          target.impl_->path = impl_->path;
+          if (target.impl_->path.size() > 1) { target.impl_->path.pop_back(); }
+          std::copy(relative_reference.impl_->path.begin(),
+            relative_reference.impl_->path.end(),
+            std::back_inserter(target.impl_->path));
+          target.NormalizePath();
+        }
+        target.impl_->query = relative_reference.impl_->query;
+      }
+      target.impl_->host = impl_->host;
+      target.impl_->user_name = impl_->user_name;
+      target.impl_->port = impl_->port;
+    }
+    target.impl_->scheme = impl_->scheme;
+  }
+
+  target.impl_->fragment = relative_reference.impl_->fragment;
+
+  return target;
 }
 
 }// namespace Uri

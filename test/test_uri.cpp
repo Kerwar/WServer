@@ -126,6 +126,7 @@ TEST_CASE("Parse String relative and non relative references", "Uri")
 
     Uri::Uri uri;
 
+    INFO("Path in: " + testVector.path_in);
     REQUIRE(uri.ParseFromString(testVector.path_in));
     REQUIRE(testVector.is_relative == uri.IsRelativeReference());
   }
@@ -141,7 +142,7 @@ TEST_CASE("Parse String relative and non relative path", "Uri")
 
   const std::vector<TestVector> testVectors{
     { "https://www.example.com/", false },
-    { "https://www.example.com", true },
+    { "https://www.example.com", false },
     { "foo", true },
     { "/", false },
   };
@@ -150,6 +151,7 @@ TEST_CASE("Parse String relative and non relative path", "Uri")
 
     Uri::Uri uri;
 
+    INFO("Path in: " + testVector.path_in);
     REQUIRE(uri.ParseFromString(testVector.path_in));
     REQUIRE(testVector.is_relative == uri.IsRelativePath());
   }
@@ -606,3 +608,50 @@ TEST_CASE("Normalization and equivalent uri", "Uri")
   uri2.NormalizePath();
   REQUIRE(uri1 == uri2);
 }
+
+TEST_CASE("Resolve relative refence form a base Uri", "Uri")
+{
+  struct TestVector
+  {
+    std::string base;
+    std::string relative_reference_string;
+    std::string target_string;
+  };
+
+  const std::vector<TestVector> testVectors{
+    { "http://a/b/c/d;p?q", "g:h", "g:h" },
+    { "http://a/b/c/d;p?q", "g", "http://a/b/c/g" },
+    { "http://example.com", "foo", "http://example.com/foo" },
+  };
+
+  for (const auto &testVector : testVectors) {
+    Uri::Uri base_uri;
+    Uri::Uri relative_uri;
+    Uri::Uri expected_uri;
+
+    // INFO("Path in: " + testVector.path_in);
+    REQUIRE(base_uri.ParseFromString(testVector.base));
+    REQUIRE(relative_uri.ParseFromString(testVector.relative_reference_string));
+    REQUIRE(expected_uri.ParseFromString(testVector.target_string));
+
+    const auto actual_target_uri = base_uri.Resolve(relative_uri);
+
+    REQUIRE(expected_uri == actual_target_uri);
+  }
+}
+
+TEST_CASE("Empty path in Uri whit authority is equivalent to slash only path",
+  "Uri")
+{
+  Uri::Uri uri1;
+  Uri::Uri uri2;
+
+  REQUIRE(uri1.ParseFromString("https://example.com"));
+  REQUIRE(uri2.ParseFromString("https://example.com/"));
+  REQUIRE(uri1 == uri2);
+
+  REQUIRE(uri1.ParseFromString("urn:"));
+  REQUIRE(uri2.ParseFromString("urn:/"));
+  REQUIRE(uri1 == uri2);
+}
+
