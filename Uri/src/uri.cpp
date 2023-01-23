@@ -298,7 +298,7 @@ struct Uri::Implementation
           if (path_delimiter == std::string::npos) {
             path.push_back(URL);
             URL.clear();
-          } else {
+          } else if (path_delimiter != 0) {
             path.emplace_back(
               URL.begin(), URL.begin() + static_cast<int>(path_delimiter));
           }
@@ -412,22 +412,22 @@ bool Uri::operator!=(const Uri &other) const { return !(*this == other); }
 
 std::ostream &operator<<(std::ostream &out_stream, const Uri &uri)
 {
-  out_stream << "Scheme: " << uri.impl_->scheme << "\n";
-  out_stream << "User name: " << uri.impl_->user_name << "\n";
-  out_stream << "Host: " << uri.impl_->host << "\n";
-  out_stream << "Port: " << uri.impl_->port << "\n";
-  out_stream << "Path: ";
+  out_stream << "Scheme: \"" << uri.impl_->scheme << "\"\n";
+  out_stream << "User name: \"" << uri.impl_->user_name << "\"\n";
+  out_stream << "Host: \"" << uri.impl_->host << "\"\n";
+  out_stream << "Port: \"" << uri.impl_->port << "\"\n";
+  out_stream << "Path: \"";
   for (const auto &segment : uri.impl_->path) {
     out_stream << segment;
     if (segment != uri.impl_->path.back()) {
       out_stream << "/";
     } else {
-      out_stream << "\n";
+      out_stream << "\"\n";
     }
   }
-  if (uri.impl_->path.empty()) { out_stream << "\n"; }
-  out_stream << "Query: " << uri.impl_->query << "\n";
-  out_stream << "Fragment " << uri.impl_->fragment << "\n";
+  if (uri.impl_->path.empty()) { out_stream << "\"\n"; }
+  out_stream << "Query: \"" << uri.impl_->query << "\"\n";
+  out_stream << "Fragment \"" << uri.impl_->fragment << "\"\n";
 
   return out_stream;
 }
@@ -446,7 +446,7 @@ bool Uri::ParseFromString(const std::string &uri_string)
 
   if (!impl_->ParsePath(uri_left)) { return false; }
 
-  if (!impl_->scheme.empty() && impl_->path.empty()) {
+  if (!impl_->host.empty() && impl_->path.empty()) {
     impl_->path.emplace_back("");
   }
 
@@ -491,14 +491,21 @@ void Uri::NormalizePath()
   impl_->path.clear();
 
   while (!old_path.empty()) {
-    if (old_path[0] == "." || (old_path[0] == ".." && impl_->path.empty())) {
+    if (old_path[0] == ".") {
+      if (old_path.size() == 1) { impl_->path.emplace_back(""); }
     } else if (old_path[0] == "..") {
-      if (impl_->path[0].empty() && impl_->path.size() == 1) {
-      } else {
+      if (!impl_->path.empty()
+          && (!impl_->path[0].empty() || impl_->path.size() > 1)) {
         impl_->path.pop_back();
+        if (old_path.size() == 1 && !impl_->path.back().empty()) {
+          impl_->path.emplace_back("");
+        }
       }
     } else {
-      impl_->path.push_back(old_path[0]);
+      if (!old_path[0].empty() || impl_->path.empty()
+          || !impl_->path.back().empty()) {
+        impl_->path.push_back(old_path[0]);
+      }
     }
     old_path.erase(old_path.begin());
   }
@@ -526,27 +533,25 @@ Uri Uri::Resolve(const Uri &relative_reference) const
       target.impl_->query = relative_reference.impl_->query;
     } else {
       if (relative_reference.impl_->path.empty()) {
-        target.impl_->path = relative_reference.impl_->path;
+        target.impl_->path = impl_->path;
         if (!relative_reference.impl_->query.empty()) {
           target.impl_->query = relative_reference.impl_->query;
         } else {
           target.impl_->query = impl_->query;
         }
       } else {
-        if (!relative_reference.impl_->path.empty()
-            && relative_reference.impl_->path[0].empty()) {
+        if (relative_reference.impl_->path[0].empty()) {
           target.impl_->path = relative_reference.impl_->path;
-          target.NormalizePath();
         } else {
           target.impl_->path = impl_->path;
           if (target.impl_->path.size() > 1) { target.impl_->path.pop_back(); }
           std::copy(relative_reference.impl_->path.begin(),
             relative_reference.impl_->path.end(),
             std::back_inserter(target.impl_->path));
-          target.NormalizePath();
         }
         target.impl_->query = relative_reference.impl_->query;
       }
+      target.NormalizePath();
       target.impl_->host = impl_->host;
       target.impl_->user_name = impl_->user_name;
       target.impl_->port = impl_->port;

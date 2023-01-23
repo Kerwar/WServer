@@ -454,9 +454,12 @@ TEST_CASE("Parse String with path corner cases", "Uri")
   const std::vector<TestVector> testVectors{
     { "/:/foo", { "", ":", "foo" } },
     { "bob@/foo", { "bob@", "foo" } },
+    { "bob@/foo/", { "bob@", "foo", "" } },
     { "hello!", { "hello!" } },
     { "urn:hello,%20w%6Frld", { "hello, world" } },
     { "//example.xom/foo/(bar", { "", "foo", "(bar" } },
+    { "?query", {} },
+    { "https://a/", { "" } },
   };
 
   for (const auto &testVector : testVectors) {
@@ -569,20 +572,22 @@ TEST_CASE("Normalize path", "Uri")
     { "https://www.example.com/a/../../b", { "", "b" } },
     { "./a/b", { "a", "b" } },
     { "..", {} },
-    { "a/b/..", { "a" } },
-    { "a/b/.", { "a", "b" } },
+    { "a/b/..", { "a", "" } },
+    { "a/b/.", { "a", "b", "" } },
     { "a/b/./c", { "a", "b", "c" } },
     { "a/b/./c/", { "a", "b", "c", "" } },
-    { "/a/b/..", { "", "a" } },
-    { "/a/b/.", { "", "a", "b" } },
+    { "/a/b/..", { "", "a", "" } },
+    { "/a/b/.", { "", "a", "b", "" } },
     { "/a/b/./c", { "", "a", "b", "c" } },
     { "/a/b/./c/", { "", "a", "b", "c", "" } },
-    { "../a/b/..", { "a" } },
-    { "../a/b/.", { "a", "b" } },
+    { "../a/b/..", { "a", "" } },
+    { "../a/b/.", { "a", "b", "" } },
     { "../a/b/./c", { "a", "b", "c" } },
     { "../a/b/./c/", { "a", "b", "c", "" } },
     { "/./a/b/../c/", { "", "a", "c", "" } },
     { "/../a/b/../c/", { "", "a", "c", "" } },
+    { "../../", { "" } },
+    { "../..", {  } },
   };
 
   for (const auto &testVector : testVectors) {
@@ -621,6 +626,26 @@ TEST_CASE("Resolve relative refence form a base Uri", "Uri")
   const std::vector<TestVector> testVectors{
     { "http://a/b/c/d;p?q", "g:h", "g:h" },
     { "http://a/b/c/d;p?q", "g", "http://a/b/c/g" },
+    { "http://a/b/c/d;p?q", "./g", "http://a/b/c/g" },
+    { "http://a/b/c/d;p?q", "g/", "http://a/b/c/g/" },
+    { "http://a/b/c/d;p?q", "//g", "http://g" },
+    { "http://a/b/c/d;p?q", "?y", "http://a/b/c/d;p?y" },
+    { "http://a/b/c/d;p?q", "g?y", "http://a/b/c/g?y" },
+    { "http://a/b/c/d;p?q", "#s", "http://a/b/c/d;p?q#s" },
+    { "http://a/b/c/d;p?q", "g#s", "http://a/b/c/g#s" },
+    { "http://a/b/c/d;p?q", "g?y#s", "http://a/b/c/g?y#s" },
+    { "http://a/b/c/d;p?q", ";x", "http://a/b/c/;x" },
+    { "http://a/b/c/d;p?q", "g;x", "http://a/b/c/g;x" },
+    { "http://a/b/c/d;p?q", "g;x?y#s", "http://a/b/c/g;x?y#s" },
+    { "http://a/b/c/d;p?q", "", "http://a/b/c/d;p?q" },
+    { "http://a/b/c/d;p?q", ".", "http://a/b/c/" },
+    { "http://a/b/c/d;p?q", "./", "http://a/b/c/" },
+    { "http://a/b/c/d;p?q", "..", "http://a/b/" },
+    { "http://a/b/c/d;p?q", "../", "http://a/b/" },
+    { "http://a/b/c/d;p?q", "../g", "http://a/b/g" },
+    { "http://a/b/c/d;p?q", "../..", "http://a/" },
+    { "http://a/b/c/d;p?q", "../../", "http://a/" },
+    { "http://a/b/c/d;p?q", "../../g", "http://a/g" },
     { "http://example.com", "foo", "http://example.com/foo" },
   };
 
@@ -629,7 +654,7 @@ TEST_CASE("Resolve relative refence form a base Uri", "Uri")
     Uri::Uri relative_uri;
     Uri::Uri expected_uri;
 
-    // INFO("Path in: " + testVector.path_in);
+    INFO("Relative uri: " + testVector.relative_reference_string);
     REQUIRE(base_uri.ParseFromString(testVector.base));
     REQUIRE(relative_uri.ParseFromString(testVector.relative_reference_string));
     REQUIRE(expected_uri.ParseFromString(testVector.target_string));
@@ -653,5 +678,8 @@ TEST_CASE("Empty path in Uri whit authority is equivalent to slash only path",
   REQUIRE(uri1.ParseFromString("urn:"));
   REQUIRE(uri2.ParseFromString("urn:/"));
   REQUIRE(uri1 == uri2);
-}
 
+  REQUIRE(uri1.ParseFromString("//example.com"));
+  REQUIRE(uri2.ParseFromString("//example.com/"));
+  REQUIRE(uri1 == uri2);
+}
