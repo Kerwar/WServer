@@ -124,6 +124,15 @@ public:
   [[nodiscard]] bool IsRelativePath() const;
 
   /*
+   * This method returns an indication of whether or not the URI contains a
+   * absolute path
+   *
+   * @return
+   * An indication of whethe or not URI contains a absolute path
+   * */
+  [[nodiscard]] bool IsAbsolutePath() const;
+
+  /*
    * This method applies the "remove_dot_segments" routine talked about
    * in  RFC 3986 (https://tools.ietf.org/hotml/rfc3986) to the path
    * segments of the URI in order to normalize the path
@@ -148,6 +157,12 @@ private:
   struct Implementation;
 
   std::unique_ptr<Implementation> impl_;
+
+  void CopyScheme(const Uri &other);
+  void CopyAuthority(const Uri &other);
+  void CopyAndNormalizePath(const Uri &other);
+  void CopyQuery(const Uri &other);
+  void CopyFragment(const Uri &other);
 };
 
 }// namespace Uri

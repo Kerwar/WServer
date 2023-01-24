@@ -484,6 +484,8 @@ bool Uri::IsRelativePath() const
   }
 }
 
+bool Uri::IsAbsolutePath() const { return !IsRelativePath(); }
+
 void Uri::NormalizePath()
 {
   auto old_path = std::move(impl_->path);
@@ -517,44 +519,35 @@ Uri Uri::Resolve(const Uri &relative_reference) const
 
   if (!relative_reference.impl_->scheme.empty()) {
     target.impl_->scheme = relative_reference.impl_->scheme;
-    target.impl_->host = relative_reference.impl_->host;
-    target.impl_->user_name = relative_reference.impl_->user_name;
-    target.impl_->port = relative_reference.impl_->port;
-    target.impl_->path = relative_reference.impl_->path;
-    target.NormalizePath();
+    target.CopyAuthority(relative_reference);
+    target.CopyAndNormalizePath(relative_reference);
     target.impl_->query = relative_reference.impl_->query;
   } else {
     if (!relative_reference.impl_->host.empty()) {
-      target.impl_->host = relative_reference.impl_->host;
-      target.impl_->user_name = relative_reference.impl_->user_name;
-      target.impl_->port = relative_reference.impl_->port;
-      target.impl_->path = relative_reference.impl_->path;
-      target.NormalizePath();
+      target.CopyAuthority(relative_reference);
+      target.CopyAndNormalizePath(relative_reference);
       target.impl_->query = relative_reference.impl_->query;
     } else {
       if (relative_reference.impl_->path.empty()) {
-        target.impl_->path = impl_->path;
+        target.CopyAndNormalizePath(*this);
         if (!relative_reference.impl_->query.empty()) {
           target.impl_->query = relative_reference.impl_->query;
         } else {
           target.impl_->query = impl_->query;
         }
+      } else if (relative_reference.IsAbsolutePath()) {
+        target.impl_->path = relative_reference.impl_->path;
+        target.impl_->query = relative_reference.impl_->query;
       } else {
-        if (relative_reference.impl_->path[0].empty()) {
-          target.impl_->path = relative_reference.impl_->path;
-        } else {
-          target.impl_->path = impl_->path;
-          if (target.impl_->path.size() > 1) { target.impl_->path.pop_back(); }
-          std::copy(relative_reference.impl_->path.begin(),
-            relative_reference.impl_->path.end(),
-            std::back_inserter(target.impl_->path));
-        }
+        target.impl_->path = impl_->path;
+        if (target.impl_->path.size() > 1) { target.impl_->path.pop_back(); }
+        std::copy(relative_reference.impl_->path.begin(),
+          relative_reference.impl_->path.end(),
+          std::back_inserter(target.impl_->path));
+        target.NormalizePath();
         target.impl_->query = relative_reference.impl_->query;
       }
-      target.NormalizePath();
-      target.impl_->host = impl_->host;
-      target.impl_->user_name = impl_->user_name;
-      target.impl_->port = impl_->port;
+      target.CopyAuthority(*this);
     }
     target.impl_->scheme = impl_->scheme;
   }
@@ -562,6 +555,28 @@ Uri Uri::Resolve(const Uri &relative_reference) const
   target.impl_->fragment = relative_reference.impl_->fragment;
 
   return target;
+}
+
+void Uri::CopyScheme(const Uri &other) { impl_->scheme = other.impl_->scheme; }
+
+void Uri::CopyAuthority(const Uri &other)
+{
+  impl_->host = other.impl_->host;
+  impl_->user_name = other.impl_->user_name;
+  impl_->port = other.impl_->port;
+}
+
+void Uri::CopyAndNormalizePath(const Uri &other)
+{
+  impl_->path = other.impl_->path;
+  NormalizePath();
+}
+
+void Uri::CopyQuery(const Uri &other) { impl_->query = other.impl_->query; }
+
+void Uri::CopyFragment(const Uri &other)
+{
+  impl_->fragment = other.impl_->fragment;
 }
 
 }// namespace Uri
