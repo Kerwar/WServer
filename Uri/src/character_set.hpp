@@ -73,7 +73,7 @@ inline const CharacterSet DIGITS{ CharacterSet('0', '9') };
 inline const CharacterSet ALPHA{ CharacterSet('A', 'Z'),
   CharacterSet('a', 'z') };
 inline const CharacterSet HEX_DIGIT{ CharacterSet('A', 'F'),
-  CharacterSet('a', 'z'),
+  CharacterSet('a', 'f'),
   CharacterSet('0', '9') };
 inline const CharacterSet UNRESERVED{ ALPHA, DIGITS, '-', '.', '_', '~' };
 inline const CharacterSet SUB_DELIMS =

@@ -361,8 +361,8 @@ TEST_CASE("Parse String with host corner cases", "Uri")
     { "//(/", "(" },
     { "//;/", ";" },
     { "//1.2.3.4/", "1.2.3.4" },
-    { "//[v7.:]/", "[v7.:]" },
-    { "//[v7.aB]/", "[v7.aB]" },
+    { "//[v7.:]/", "v7.:" },
+    { "//[v7.aB]/", "v7.aB" },
   };
 
   for (const auto &testVector : testVectors) {
@@ -587,7 +587,7 @@ TEST_CASE("Normalize path", "Uri")
     { "/./a/b/../c/", { "", "a", "c", "" } },
     { "/../a/b/../c/", { "", "a", "c", "" } },
     { "../../", { "" } },
-    { "../..", {  } },
+    { "../..", {} },
   };
 
   for (const auto &testVector : testVectors) {
@@ -682,4 +682,44 @@ TEST_CASE("Empty path in Uri whit authority is equivalent to slash only path",
   REQUIRE(uri1.ParseFromString("//example.com"));
   REQUIRE(uri2.ParseFromString("//example.com/"));
   REQUIRE(uri1 == uri2);
+}
+
+TEST_CASE("Parsing IPv6Address URI", "Uri")
+{
+  struct TestVector
+  {
+    std::string uri_string;
+    std::string expected_host;
+    bool is_valid;
+  };
+
+  const std::vector<TestVector> test_vectors{
+    { "http://[::1]/", "::1", true },
+    { "http://[::ffff:1.2.3.4]/", "::ffff:1.2.3.4", true },
+    { "http://[2001:db8:85a3:8d3:1319:8a2e:370:7348]/",
+      "2001:db8:85a3:8d3:1319:8a2e:370:7348",
+      true },
+
+    { "http://[::fxff:1.2.3.4]/", "", false },
+    { "http://[::ffff:1.2.x.4]/", "", false },
+    { "http://[::ffff:1.2.3.]/", "", false },
+    { "http://[::ffff:1.2]/", "", false },
+    { "http://[::ffff:1.2.3.256]/", "", false },
+    { "http://[2001:db8:85a3:8d3:1319:8a2e:370:7348:0000]/", "", false },
+    { "http://[2001:db8:85a3::8a2e:0:]/", "", false },
+    { "http://[2001:db8:85a3::8a2e::]/", "", false },
+    { "http://[]/", "", false },
+    { "http://[:]/", "", false },
+    { "http://[v]/", "", false },
+  };
+
+  for (const auto &test_vector : test_vectors) {
+    Uri::Uri uri;
+    const bool parse_result = uri.ParseFromString(test_vector.uri_string);
+
+    INFO(test_vector.uri_string);
+    REQUIRE(test_vector.is_valid == parse_result);
+
+    if (parse_result) { REQUIRE(test_vector.expected_host == uri.GetHost()); }
+  }
 }

@@ -3,7 +3,9 @@
 #include "normalize_case_insensitive_string.hpp"
 #include "percent_encoded_character_decoder.hpp"
 
+#include <chrono>
 #include <cstdint>
+#include <cstdio>
 #include <functional>
 #include <iterator>
 #include <memory>
@@ -108,7 +110,8 @@ struct Uri::Implementation
       if (!DecodeElement(user_name, USER_NAME)) { return false; }
     }
 
-    auto port_delimiter = authority.find(':');
+    auto port_delimiter =
+      authority[0] != '[' ? authority.find(':') : std::string::npos;
     if (port_delimiter < authority.find(']')
         && authority.find(']') != std::string::npos) {
       port_delimiter = authority.find(':', port_delimiter + 1);
@@ -200,29 +203,12 @@ struct Uri::Implementation
 
   bool DecodeIP(const std::string &coded_host)
   {
-    enum States {
-      first_character,
-      IPv6address,
-    };
+    const std::string inside_brackets =
+      coded_host.substr(1, coded_host.length() - 2);
+    if (coded_host[0] != '[' || coded_host.back() != ']') { return false; }
+    if (inside_brackets[0] == 'v') { return DecodeIPvFuture(inside_brackets); }
 
-    States decode_state = first_character;
-    for (auto character : coded_host) {
-      switch (decode_state) {
-      case first_character:
-        if (character == '[') { return DecodeIPvFuture(coded_host); }
-        host.push_back(character);
-        break;
-
-      case IPv6address:
-        if (character == ']') {
-          host.push_back(character);
-          break;
-        }
-        return false;
-      }
-    }
-
-    return true;
+    return ValidateIpv6Address(inside_brackets);
   }
 
   bool DecodeIPvFuture(const std::string &coded_host)
@@ -239,39 +225,228 @@ struct Uri::Implementation
     for (auto character : coded_host) {
       switch (decode_state) {
       case prefix:
-        if (character == '[') {
-          host.push_back(character);
-          break;
-        } else if (character == 'v') {
-          host.push_back(character);
-          decode_state = hexdigit;
-          break;
-        }
-        return false;
+        if (character != 'v') { return false; }
+        host.push_back(character);
+        decode_state = hexdigit;
+        break;
+
       case hexdigit:
-        if (HEX_DIGIT.Contains(character)) {
-          host.push_back(character);
-          decode_state = dot;
-          break;
-        }
-        return false;
+        if (!HEX_DIGIT.Contains(character)) { return false; }
+        host.push_back(character);
+        decode_state = dot;
+        break;
+
       case dot:
-        if (character == '.') {
-          host.push_back(character);
-          decode_state = sufix;
+        if (character != '.') { return false; }
+        host.push_back(character);
+        decode_state = sufix;
+        break;
+
+      case sufix:
+        if (!IPVFUTURE_LAST.Contains(character)) { return false; }
+        host.push_back(character);
+        break;
+      }
+    }
+
+    return decode_state == sufix;
+  }
+
+  bool ValidateIpv6Address(const std::string &address)// NOLINT
+  {
+    size_t number_groups = 0;
+    size_t number_digits = 0;
+    bool double_colon_encountered = false;
+    size_t potential_ipv4_start = 0;
+    size_t position = 0;
+    bool ipv4_encountered = false;
+
+    enum class ValidationState {
+      NoGroupYet,
+      ColonNoGroupYet,
+      MaybeIPV4,
+      NotIPV4,
+      AfterDoubleColon,
+      ColonAfterGroup,
+    };
+
+    ValidationState current_state = ValidationState::NoGroupYet;
+    for (const auto &character : address) {
+      switch (current_state) {
+      case ValidationState::NoGroupYet:
+        if (character == ':') {
+          current_state = ValidationState::ColonNoGroupYet;
+          break;
+        } else if (DIGITS.Contains(character)) {
+          potential_ipv4_start = position;
+          number_digits = 1;
+          current_state = ValidationState::MaybeIPV4;
+          break;
+        } else if (HEX_DIGIT.Contains(character)) {
+          current_state = ValidationState::NotIPV4;
+          number_digits = 1;
           break;
         }
         return false;
-      case sufix:
-        if (IPVFUTURE_LAST.Contains(character)) {
-          host.push_back(character);
+
+      case ValidationState::ColonNoGroupYet:
+        if (character == ':') {
+          double_colon_encountered = true;
+          current_state = ValidationState::AfterDoubleColon;
+          break;
+        }
+        return false;
+
+      case ValidationState::AfterDoubleColon:
+        if (DIGITS.Contains(character)) {
+          potential_ipv4_start = position;
+          if (++number_digits > 4) { return false; }
+          current_state = ValidationState::MaybeIPV4;
+          break;
+        } else if (HEX_DIGIT.Contains(character)) {
+          if (++number_digits > 4) { return false; }
+          current_state = ValidationState::NotIPV4;
+          break;
+        }
+        return false;
+
+      case ValidationState::NotIPV4:
+        if (character == ':') {
+          number_digits = 0;
+          number_groups++;
+          current_state = ValidationState::ColonAfterGroup;
+          break;
+        } else if (HEX_DIGIT.Contains(character)) {
+          if (++number_digits > 4) { return false; }
+          break;
+        }
+        return false;
+
+      case ValidationState::MaybeIPV4:
+        if (character == ':') {
+          number_digits = 0;
+          number_groups++;
+          current_state = ValidationState::ColonAfterGroup;
+          break;
+        } else if (character == '.') {
+          ipv4_encountered = true;
+          break;
+        } else if (DIGITS.Contains(character)) {
+          if (++number_digits > 4) { return false; }
+          break;
+        } else if (HEX_DIGIT.Contains(character)) {
+          if (++number_digits > 4) { return false; }
+          current_state = ValidationState::NotIPV4;
+          break;
+        }
+        return false;
+
+      case ValidationState::ColonAfterGroup:
+        if (character == ':') {
+          if (double_colon_encountered) { return false; }
+          double_colon_encountered = true;
+          current_state = ValidationState::AfterDoubleColon;
+          break;
+        } else if (DIGITS.Contains(character)) {
+          potential_ipv4_start = position;
+          ++number_digits;
+          current_state = ValidationState::MaybeIPV4;
+          break;
+        } else if (HEX_DIGIT.Contains(character)) {
+          if (++number_digits > 4) { return false; }
+          ++number_digits;
+          current_state = ValidationState::NotIPV4;
+          break;
+        }
+        return false;
+      }
+      if (ipv4_encountered) { break; }
+      ++position;
+    }
+
+    if (current_state == ValidationState::NotIPV4
+        || current_state == ValidationState::MaybeIPV4) {
+      ++number_groups;
+    }
+    if (position == address.length()
+        && (current_state == ValidationState::ColonNoGroupYet
+            || current_state == ValidationState::ColonAfterGroup)) {
+      return false;
+    }
+
+    const size_t MAX_GROUPS = 8;
+
+    if (ipv4_encountered) {
+      if (!ValidateIpv4Address(address.substr(potential_ipv4_start))) {
+        return false;
+      }
+      number_groups += 2;
+    }
+
+    host = address;
+    if (double_colon_encountered) {
+      return number_groups < MAX_GROUPS;
+    } else {
+      return number_groups == MAX_GROUPS;
+    }
+  }
+
+  static bool ValidateIpv4Address(const std::string &address)
+  {
+    const size_t MAX_GROUPS = 4;
+    size_t number_groups = 0;
+    std::string octet_buffer;
+
+    enum ValidationState { OutOctet, DigitOrDot };
+
+    ValidationState current_state = OutOctet;
+
+    for (const auto &character : address) {
+      switch (current_state) {
+      case OutOctet:
+        if (!DIGITS.Contains(character)) { return false; }
+        octet_buffer.push_back(character);
+        current_state = DigitOrDot;
+        break;
+
+      case DigitOrDot:
+        if (character == '.') {
+          if (++number_groups > 4) { return false; }
+          if (!ValidateOctet(octet_buffer)) { return false; }
+          octet_buffer.clear();
+          current_state = OutOctet;
+          break;
+        } else if (DIGITS.Contains(character)) {
+          octet_buffer.push_back(character);
           break;
         }
         return false;
       }
     }
+    if (!octet_buffer.empty()) {
+      ++number_groups;
+      if (!ValidateOctet(octet_buffer)) { return false; }
+    }
 
-    return host.back() == ']';
+    return number_groups == MAX_GROUPS;
+  }
+
+  static bool ValidateOctet(const std::string &octet_string)
+  {
+    int octet = 0;
+    const int OCTET_SHIFT = 10;
+
+    for (const auto &character : octet_string) {
+      if (DIGITS.Contains(character)) {
+        octet *= OCTET_SHIFT;
+        octet += character - '0';
+      } else {
+        return false;
+      }
+    }
+
+    const int MAX_OCTET = 255;
+    return octet <= MAX_OCTET;
   }
 
   bool ParsePath(std::string &URL)
