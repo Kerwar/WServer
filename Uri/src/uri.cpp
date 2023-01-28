@@ -13,6 +13,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <sys/types.h>
 
 namespace {
 /*
@@ -73,6 +74,12 @@ struct Uri::Implementation
   std::string fragment;
 
   // Methods
+
+  [[nodiscard]] bool HasAuthority() const
+  {
+    return !host.empty() || !user_name.empty() || has_port;
+  }
+
   bool ParseScheme(const std::string &uri_string)
   {
     auto scheme_end = uri_string.find(':');
@@ -758,9 +765,34 @@ void Uri::CopyFragment(const Uri &other)
 
 void Uri::SetScheme(const std::string &scheme) { impl_->scheme = scheme; }
 
+void Uri::SetUserName(const std::string &user_name)
+{
+  impl_->user_name = user_name;
+}
+
 void Uri::SetHost(const std::string &host) { impl_->host = host; }
 
+void Uri::SetPort(const u_int16_t &port)
+{
+  impl_->port = port;
+  impl_->has_port = true;
+}
+
+void Uri::ClearPort()
+{
+  impl_->port = 0;
+  impl_->has_port = false;
+}
+
+
+void Uri::SetPath(const std::vector<std::string> &path) { impl_->path = path; }
+
 void Uri::SetQuery(const std::string &query) { impl_->query = query; }
+
+void Uri::SetFragment(const std::string &fragment)
+{
+  impl_->fragment = fragment;
+}
 
 std::string Uri::GenerateString() const
 {
@@ -768,15 +800,26 @@ std::string Uri::GenerateString() const
   std::ostringstream buffer;
 
   if (!impl_->scheme.empty()) { buffer << impl_->scheme << ":"; }
-  if (!impl_->host.empty()) {
+  if (impl_->HasAuthority()) {
     buffer << "//";
+    if (!impl_->user_name.empty()) { buffer << impl_->user_name << "@"; }
     if (impl_->ValidateIpv6Address(impl_->host)) {
       buffer << '[' << impl_->host << ']';
     } else {
       buffer << impl_->host;
     }
   }
+
+  for (const auto &segment : impl_->path) {
+    if (&segment != &(impl_->path.front())
+        || (segment.empty() && impl_->path.size() == 1)) {
+      buffer << "/";
+    }
+    buffer << segment;
+  }
+
   if (!impl_->query.empty()) { buffer << "?" << impl_->query; }
+  if (!impl_->fragment.empty()) { buffer << "#" << impl_->fragment; }
 
   return buffer.str();
 }

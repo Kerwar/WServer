@@ -1,5 +1,6 @@
 #include "../Uri/headers/uri.hpp"
 #include <catch2/catch.hpp>
+#include <sys/types.h>
 
 TEST_CASE("Parse String base case", "Uri")
 {
@@ -729,26 +730,89 @@ TEST_CASE("Generate String from URI", "Uri")
   struct TestVector
   {
     std::string scheme;
+    std::string user_name;
     std::string host;
+    bool has_port;
+    u_int16_t port;
+    std::vector<std::string> path;
     std::string query;
+    std::string fragment;
     std::string uri_string;
   };
 
   const std::vector<TestVector> test_vectors{
-    { "http", "www.example.com", "foobar", "http://www.example.com?foobar" },
-    { "", "www.example.com", "foobar", "//www.example.com?foobar" },
-    { "", "www.example.com", "", "//www.example.com" },
-    { "", "", "bar", "?bar" },
-    { "https", "", "bar", "https:?bar" },
-    { "https", "::1", "", "https://[::1]" },
+    { "http",
+      "bob",
+      "www.example.com",
+      true,
+      8080,
+      { "", "abc", "def" },
+      "foobar",
+      "ch2",
+      "http://bob@www.example.com/abc/def?foobar#ch2" },
+    { "",
+      "",
+      "www.example.com",
+      true,
+      0,
+      {},
+      "foobar",
+      "",
+      "//www.example.com?foobar" },
+    { "", "", "www.example.com", false, 0, {}, "", "", "//www.example.com" },
+    { "",
+      "",
+      "www.example.com",
+      false,
+      0,
+      { "" },
+      "",
+      "",
+      "//www.example.com/" },
+    { "",
+      "",
+      "www.example.com",
+      false,
+      0,
+      { "", "xyz" },
+      "",
+      "",
+      "//www.example.com/xyz" },
+    { "",
+      "",
+      "www.example.com",
+      false,
+      0,
+      { "", "xyz", "" },
+      "",
+      "",
+      "//www.example.com/xyz/" },
+    { "", "", "", false, 0, { "" }, "", "", "/" },
+    { "", "", "", false, 0, { "", "xyz" }, "", "", "/xyz" },
+    { "", "", "", false, 0, { "", "xyz", "" }, "", "", "/xyz/" },
+    { "", "", "", false, 0, { "xyz", "" }, "", "", "xyz/" },
+    { "", "", "", false, 0, {}, "bar", "", "?bar" },
+    { "https", "", "", false, 0, {}, "bar", "", "https:?bar" },
+    { "https", "", "::1", false, 0, {}, "", "", "https://[::1]" },
+    { "http", "bob", "", false, 0, {}, "foobar", "", "http://bob@?foobar" },
   };
 
   for (const auto &test_vector : test_vectors) {
     Uri::Uri uri;
 
     uri.SetScheme(test_vector.scheme);
+    uri.SetUserName(test_vector.user_name);
     uri.SetHost(test_vector.host);
+
+    if (test_vector.has_port) {
+      uri.SetPort(test_vector.port);
+    } else {
+      uri.ClearPort();
+    }
+
+    uri.SetPath(test_vector.path);
     uri.SetQuery(test_vector.query);
+    uri.SetFragment(test_vector.fragment);
 
     INFO(test_vector.uri_string);
     REQUIRE(test_vector.uri_string == uri.GenerateString());
