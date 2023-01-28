@@ -723,3 +723,34 @@ TEST_CASE("Parsing IPv6Address URI", "Uri")
     if (parse_result) { REQUIRE(test_vector.expected_host == uri.GetHost()); }
   }
 }
+
+TEST_CASE("Generate String from URI", "Uri")
+{
+  struct TestVector
+  {
+    std::string scheme;
+    std::string host;
+    std::string query;
+    std::string uri_string;
+  };
+
+  const std::vector<TestVector> test_vectors{
+    { "http", "www.example.com", "foobar", "http://www.example.com?foobar" },
+    { "", "www.example.com", "foobar", "//www.example.com?foobar" },
+    { "", "www.example.com", "", "//www.example.com" },
+    { "", "", "bar", "?bar" },
+    { "https", "", "bar", "https:?bar" },
+    { "https", "::1", "", "https://[::1]" },
+  };
+
+  for (const auto &test_vector : test_vectors) {
+    Uri::Uri uri;
+
+    uri.SetScheme(test_vector.scheme);
+    uri.SetHost(test_vector.host);
+    uri.SetQuery(test_vector.query);
+
+    INFO(test_vector.uri_string);
+    REQUIRE(test_vector.uri_string == uri.GenerateString());
+  }
+}

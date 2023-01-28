@@ -153,6 +153,42 @@ public:
    */
   [[nodiscard]] Uri Resolve(const Uri &relative_reference) const;
 
+  /**
+   * This method sets the scheme of Uri to the given string
+   *
+   * @param[in] scheme
+   *    This is the string which the scheme is set to
+   *
+   */
+  void SetScheme(const std::string &scheme);
+
+  /**
+   * This method sets the host of Uri to the given string
+   *
+   * @param[in] host
+   *    This is the string which the host is set to
+   *
+   */
+  void SetHost(const std::string &host);
+
+  /**
+   * This method sets the query of Uri to the given string
+   *
+   * @param[in] query
+   *    This is the string which the query is set to
+   *
+   */
+  void SetQuery(const std::string &query);
+
+  /**
+   * This method returns a string of the Uri address
+   *
+   * @param[out] 
+   *    This is the string of the Uri
+   *
+   */
+  [[nodiscard]] std::string GenerateString() const;
+
 private:
   struct Implementation;
 

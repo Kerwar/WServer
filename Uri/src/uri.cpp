@@ -10,6 +10,7 @@
 #include <iterator>
 #include <memory>
 #include <random>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 
@@ -147,7 +148,7 @@ struct Uri::Implementation
 
   bool UncodeHost(const std::string &coded_host)
   {
-    enum Decoded_state {
+    enum class Decoded_state {
       first_character,
       normal_state,
       hex_decode_character,
@@ -155,25 +156,26 @@ struct Uri::Implementation
       IPv4address,
     };
 
-    Decoded_state decode_state =
-      coded_host.empty() ? normal_state : first_character;
+    Decoded_state decode_state = coded_host.empty()
+                                   ? Decoded_state::normal_state
+                                   : Decoded_state::first_character;
     PercentEncodedCharacterDecoder percent_decoder;
 
     for (auto character : coded_host) {
 
       switch (decode_state) {
-      case first_character:
+      case Decoded_state::first_character:
         if (character == '[') {
-          decode_state = IPLiteral;
+          decode_state = Decoded_state::IPLiteral;
           break;
         }
-        decode_state = normal_state;
+        decode_state = Decoded_state::normal_state;
         [[fallthrough]];
 
-      case normal_state:
+      case Decoded_state::normal_state:
         if (character == '%') {
           percent_decoder = PercentEncodedCharacterDecoder();
-          decode_state = hex_decode_character;
+          decode_state = Decoded_state::hex_decode_character;
           break;
         } else if (REG_NAME_NOT_PCT_ENCODED.Contains(character)) {
           host.push_back(character);
@@ -181,24 +183,24 @@ struct Uri::Implementation
         }
         return false;
 
-      case hex_decode_character:
+      case Decoded_state::hex_decode_character:
         if (!percent_decoder.NextEncodedCharacter(character)) { return false; }
         if (percent_decoder.Done()) {
           host.push_back(percent_decoder.GetDecodedCharacter());
-          decode_state = normal_state;
+          decode_state = Decoded_state::normal_state;
         }
         break;
 
-      case IPLiteral:
+      case Decoded_state::IPLiteral:
         return DecodeIP(coded_host);
 
-      case IPv4address:
+      case Decoded_state::IPv4address:
         break;
       }
     }
 
     host = NormalizeCaseInsensitiveString(host);
-    return decode_state == normal_state;
+    return decode_state == Decoded_state::normal_state;
   }
 
   bool DecodeIP(const std::string &coded_host)
@@ -213,43 +215,43 @@ struct Uri::Implementation
 
   bool DecodeIPvFuture(const std::string &coded_host)
   {
-    enum States {
+    enum class States {
       prefix,
       hexdigit,
       dot,
       sufix,
     };
 
-    States decode_state = prefix;
+    States decode_state = States::prefix;
 
     for (auto character : coded_host) {
       switch (decode_state) {
-      case prefix:
+      case States::prefix:
         if (character != 'v') { return false; }
         host.push_back(character);
-        decode_state = hexdigit;
+        decode_state = States::hexdigit;
         break;
 
-      case hexdigit:
+      case States::hexdigit:
         if (!HEX_DIGIT.Contains(character)) { return false; }
         host.push_back(character);
-        decode_state = dot;
+        decode_state = States::dot;
         break;
 
-      case dot:
+      case States::dot:
         if (character != '.') { return false; }
         host.push_back(character);
-        decode_state = sufix;
+        decode_state = States::sufix;
         break;
 
-      case sufix:
+      case States::sufix:
         if (!IPVFUTURE_LAST.Contains(character)) { return false; }
         host.push_back(character);
         break;
       }
     }
 
-    return decode_state == sufix;
+    return decode_state == States::sufix;
   }
 
   bool ValidateIpv6Address(const std::string &address)// NOLINT
@@ -397,24 +399,24 @@ struct Uri::Implementation
     size_t number_groups = 0;
     std::string octet_buffer;
 
-    enum ValidationState { OutOctet, DigitOrDot };
+    enum class ValidationState { OutOctet, DigitOrDot };
 
-    ValidationState current_state = OutOctet;
+    ValidationState current_state = ValidationState::OutOctet;
 
     for (const auto &character : address) {
       switch (current_state) {
-      case OutOctet:
+      case ValidationState::OutOctet:
         if (!DIGITS.Contains(character)) { return false; }
         octet_buffer.push_back(character);
-        current_state = DigitOrDot;
+        current_state = ValidationState::DigitOrDot;
         break;
 
-      case DigitOrDot:
+      case ValidationState::DigitOrDot:
         if (character == '.') {
           if (++number_groups > 4) { return false; }
           if (!ValidateOctet(octet_buffer)) { return false; }
           octet_buffer.clear();
-          current_state = OutOctet;
+          current_state = ValidationState::OutOctet;
           break;
         } else if (DIGITS.Contains(character)) {
           octet_buffer.push_back(character);
@@ -752,6 +754,31 @@ void Uri::CopyQuery(const Uri &other) { impl_->query = other.impl_->query; }
 void Uri::CopyFragment(const Uri &other)
 {
   impl_->fragment = other.impl_->fragment;
+}
+
+void Uri::SetScheme(const std::string &scheme) { impl_->scheme = scheme; }
+
+void Uri::SetHost(const std::string &host) { impl_->host = host; }
+
+void Uri::SetQuery(const std::string &query) { impl_->query = query; }
+
+std::string Uri::GenerateString() const
+{
+
+  std::ostringstream buffer;
+
+  if (!impl_->scheme.empty()) { buffer << impl_->scheme << ":"; }
+  if (!impl_->host.empty()) {
+    buffer << "//";
+    if (impl_->ValidateIpv6Address(impl_->host)) {
+      buffer << '[' << impl_->host << ']';
+    } else {
+      buffer << impl_->host;
+    }
+  }
+  if (!impl_->query.empty()) { buffer << "?" << impl_->query; }
+
+  return buffer.str();
 }
 
 }// namespace Uri
