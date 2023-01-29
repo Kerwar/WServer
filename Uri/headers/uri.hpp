@@ -222,6 +222,21 @@ public:
   void SetQuery(const std::string &query);
 
   /**
+   * This method checks removes the query in Uri 
+   *
+   */
+  void ClearQuery();
+
+  /**
+   * This method checks if the there is a query in Uri 
+   *
+   * @param[out] bool
+   *    This value says if wheter or not there is a query
+   *
+   */
+  [[nodiscard]] bool HasQuery() const;
+
+  /**
    * This method sets the fragment of Uri to the given string
    *
    * @param[in] fragment
@@ -231,6 +246,21 @@ public:
   void SetFragment(const std::string &fragment);
 
   /**
+   * This method checks removes the fragment in Uri 
+   *
+   */
+  void ClearFragment();
+
+  /**
+   * This method checks if the there is a fragment in Uri 
+   *
+   * @param[out] bool
+   *    This value says if wheter or not there is a fragment
+   *
+   */
+  [[nodiscard]] bool HasFragment() const;
+
+  /**
    * This method returns a string of the Uri address
    *
    * @param[out]
@@ -238,7 +268,6 @@ public:
    *
    */
   [[nodiscard]] std::string GenerateString() const;
-
 private:
   struct Implementation;
 

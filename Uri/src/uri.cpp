@@ -67,10 +67,12 @@ struct Uri::Implementation
   std::string scheme;
   std::string user_name;
   std::string host;
-  uint16_t port = 0000;
   bool has_port = false;
+  uint16_t port = 0000;
   std::vector<std::string> path;
+  bool has_query = false;
   std::string query;
+  bool has_fragment = false;
   std::string fragment;
 
   // Methods
@@ -519,6 +521,7 @@ struct Uri::Implementation
       if (query_delimiter == std::string::npos) {
         query.clear();
       } else {
+        has_query = true;
         query = uri_string.substr(query_delimiter + 1);
         if (!DecodeElement(query, QUERY_OR_FRAGMENT)) {
           query.clear();
@@ -526,6 +529,7 @@ struct Uri::Implementation
         }
       }
     } else {
+      has_fragment = true;
       fragment = uri_string.substr(fragment_delimiter + 1);
       if (!DecodeElement(fragment, QUERY_OR_FRAGMENT)) {
         fragment.clear();
@@ -534,6 +538,7 @@ struct Uri::Implementation
       if (query_delimiter == std::string::npos) {
         query.clear();
       } else {
+        has_query = true;
         query = uri_string.substr(
           query_delimiter + 1, fragment_delimiter - query_delimiter - 1);
         if (!DecodeElement(query, QUERY_OR_FRAGMENT)) {
@@ -618,6 +623,7 @@ std::ostream &operator<<(std::ostream &out_stream, const Uri &uri)
 
 bool Uri::ParseFromString(const std::string &uri_string)
 {
+  impl_ = std::make_unique<Implementation>();
   if (!impl_->ParseScheme(uri_string)) { return false; }
 
   auto scheme_end = uri_string.find(':');
@@ -659,16 +665,12 @@ std::string Uri::GetFragment() const { return impl_->fragment; }
 
 bool Uri::IsRelativeReference() const { return impl_->scheme.empty(); }
 
-bool Uri::IsRelativePath() const
-{
-  if (impl_->path.empty()) {
-    return true;
-  } else {
-    return !impl_->path[0].empty();
-  }
-}
+bool Uri::IsRelativePath() const { return !IsAbsolutePath(); }
 
-bool Uri::IsAbsolutePath() const { return !IsRelativePath(); }
+bool Uri::IsAbsolutePath() const
+{
+  return !impl_->path.empty() && impl_->path.front().empty();
+}
 
 void Uri::NormalizePath()
 {
@@ -787,12 +789,33 @@ void Uri::ClearPort()
 
 void Uri::SetPath(const std::vector<std::string> &path) { impl_->path = path; }
 
-void Uri::SetQuery(const std::string &query) { impl_->query = query; }
+void Uri::SetQuery(const std::string &query)
+{
+  impl_->has_query = true;
+  impl_->query = query;
+}
+
+void Uri::ClearQuery()
+{
+  impl_->query.clear();
+  impl_->has_query = false;
+}
+
+bool Uri::HasQuery() const { return impl_->has_query; }
 
 void Uri::SetFragment(const std::string &fragment)
 {
+  impl_->has_fragment = true;
   impl_->fragment = fragment;
 }
+
+void Uri::ClearFragment()
+{
+  impl_->fragment.clear();
+  impl_->has_fragment = false;
+}
+
+bool Uri::HasFragment() const { return impl_->has_fragment; }
 
 std::string Uri::GenerateString() const
 {
@@ -810,16 +833,16 @@ std::string Uri::GenerateString() const
     }
   }
 
+  if (IsAbsolutePath() && impl_->path.size() == 1) { buffer << "/"; }
+  size_t position = 0;
   for (const auto &segment : impl_->path) {
-    if (&segment != &(impl_->path.front())
-        || (segment.empty() && impl_->path.size() == 1)) {
-      buffer << "/";
-    }
+    // if (&segment != &(impl_->path.front())) { buffer << "/"; }
     buffer << segment;
+    if (++position < impl_->path.size()) { buffer << "/"; }
   }
 
-  if (!impl_->query.empty()) { buffer << "?" << impl_->query; }
-  if (!impl_->fragment.empty()) { buffer << "#" << impl_->fragment; }
+  if (impl_->has_query) { buffer << "?" << impl_->query; }
+  if (impl_->has_fragment) { buffer << "#" << impl_->fragment; }
 
   return buffer.str();
 }

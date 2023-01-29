@@ -2,7 +2,7 @@
 #include <catch2/catch.hpp>
 #include <sys/types.h>
 
-TEST_CASE("Parse String base case", "Uri")
+TEST_CASE("Parse String base case", "Uri")// NOLINT
 {
   Uri::Uri uri;
 
@@ -188,6 +188,34 @@ TEST_CASE("Parse String with query and fragment", "Uri")
     REQUIRE(uri.ParseFromString(testVector.path_in));
     REQUIRE(testVector.host == uri.GetHost());
     REQUIRE(testVector.query == uri.GetQuery());
+    REQUIRE(testVector.fragment == uri.GetFragment());
+  }
+}
+
+TEST_CASE("Parse String with fragment corner cases", "Uri")
+{
+  struct TestVector
+  {
+    std::string path_in;
+    std::string fragment;
+  };
+
+  const std::vector<TestVector> testVectors{
+    { "/", "" },
+    { "/#", "" },
+    { "/#:/foo", ":/foo" },
+    { "#bob@foo", "bob@foo" },
+    { "#hello!", "hello!" },
+    { "run:#hello,%20w%6Frld", "hello, world" },
+    { "//example.com/foo#(bar)/", "(bar)/" },
+    { "//example.com/#foo?bar", "foo?bar" },
+  };
+
+  for (const auto &testVector : testVectors) {
+
+    Uri::Uri uri;
+    INFO(testVector.path_in);
+    REQUIRE(uri.ParseFromString(testVector.path_in));
     REQUIRE(testVector.fragment == uri.GetFragment());
   }
 }
@@ -666,7 +694,8 @@ TEST_CASE("Resolve relative refence form a base Uri", "Uri")
   }
 }
 
-TEST_CASE("Empty path in Uri whit authority is equivalent to slash only path",
+TEST_CASE(
+  "Empty path in Uri whit authority is equivalent to slash only path",// NOLINT
   "Uri")
 {
   Uri::Uri uri1;
@@ -674,10 +703,6 @@ TEST_CASE("Empty path in Uri whit authority is equivalent to slash only path",
 
   REQUIRE(uri1.ParseFromString("https://example.com"));
   REQUIRE(uri2.ParseFromString("https://example.com/"));
-  REQUIRE(uri1 == uri2);
-
-  REQUIRE(uri1.ParseFromString("urn:"));
-  REQUIRE(uri2.ParseFromString("urn:/"));
   REQUIRE(uri1 == uri2);
 
   REQUIRE(uri1.ParseFromString("//example.com"));
@@ -735,7 +760,9 @@ TEST_CASE("Generate String from URI", "Uri")
     bool has_port;
     u_int16_t port;
     std::vector<std::string> path;
+    bool has_query;
     std::string query;
+    bool has_fragment;
     std::string fragment;
     std::string uri_string;
   };
@@ -747,7 +774,9 @@ TEST_CASE("Generate String from URI", "Uri")
       true,
       8080,
       { "", "abc", "def" },
+      true,
       "foobar",
+      true,
       "ch2",
       "http://bob@www.example.com/abc/def?foobar#ch2" },
     { "",
@@ -756,17 +785,31 @@ TEST_CASE("Generate String from URI", "Uri")
       true,
       0,
       {},
+      true,
       "foobar",
+      false,
       "",
       "//www.example.com?foobar" },
-    { "", "", "www.example.com", false, 0, {}, "", "", "//www.example.com" },
+    { "",
+      "",
+      "www.example.com",
+      false,
+      0,
+      {},
+      false,
+      "",
+      false,
+      "",
+      "//www.example.com" },
     { "",
       "",
       "www.example.com",
       false,
       0,
       { "" },
+      false,
       "",
+      false,
       "",
       "//www.example.com/" },
     { "",
@@ -775,7 +818,9 @@ TEST_CASE("Generate String from URI", "Uri")
       false,
       0,
       { "", "xyz" },
+      false,
       "",
+      false,
       "",
       "//www.example.com/xyz" },
     { "",
@@ -784,17 +829,29 @@ TEST_CASE("Generate String from URI", "Uri")
       false,
       0,
       { "", "xyz", "" },
+      false,
       "",
+      false,
       "",
       "//www.example.com/xyz/" },
-    { "", "", "", false, 0, { "" }, "", "", "/" },
-    { "", "", "", false, 0, { "", "xyz" }, "", "", "/xyz" },
-    { "", "", "", false, 0, { "", "xyz", "" }, "", "", "/xyz/" },
-    { "", "", "", false, 0, { "xyz", "" }, "", "", "xyz/" },
-    { "", "", "", false, 0, {}, "bar", "", "?bar" },
-    { "https", "", "", false, 0, {}, "bar", "", "https:?bar" },
-    { "https", "", "::1", false, 0, {}, "", "", "https://[::1]" },
-    { "http", "bob", "", false, 0, {}, "foobar", "", "http://bob@?foobar" },
+    { "", "", "", false, 0, { "" }, false, "", false, "", "/" },
+    { "", "", "", false, 0, { "", "xyz" }, false, "", false, "", "/xyz" },
+    { "", "", "", false, 0, { "", "xyz", "" }, false, "", false, "", "/xyz/" },
+    { "", "", "", false, 0, { "xyz", "" }, false, "", false, "", "xyz/" },
+    { "", "", "", false, 0, {}, true, "bar", false, "", "?bar" },
+    { "https", "", "", false, 0, {}, true, "bar", false, "", "https:?bar" },
+    { "https", "", "::1", false, 0, {}, false, "", false, "", "https://[::1]" },
+    { "http",
+      "bob",
+      "",
+      false,
+      0,
+      {},
+      true,
+      "foobar",
+      false,
+      "",
+      "http://bob@?foobar" },
   };
 
   for (const auto &test_vector : test_vectors) {
@@ -811,10 +868,48 @@ TEST_CASE("Generate String from URI", "Uri")
     }
 
     uri.SetPath(test_vector.path);
-    uri.SetQuery(test_vector.query);
-    uri.SetFragment(test_vector.fragment);
+    if (test_vector.has_query) { uri.SetQuery(test_vector.query); }
+    if (test_vector.has_fragment) { uri.SetFragment(test_vector.fragment); }
 
     INFO(test_vector.uri_string);
     REQUIRE(test_vector.uri_string == uri.GenerateString());
   }
+}
+
+TEST_CASE("Fragment is present but empty", "Uri")// NOLINT
+{
+  Uri::Uri uri;
+
+  std::string fragment_string{ "https://www.example.com#" };
+  std::string no_fragment_string{ "https://www.example.com" };
+
+  REQUIRE(uri.ParseFromString(fragment_string));
+  REQUIRE(uri.HasFragment());
+  REQUIRE(uri.GetFragment().empty());
+  REQUIRE("https://www.example.com/#" == uri.GenerateString());
+  uri.ClearFragment();
+  REQUIRE("https://www.example.com/" == uri.GenerateString());
+
+  REQUIRE(uri.ParseFromString(no_fragment_string));
+  REQUIRE_FALSE(uri.HasFragment());
+  REQUIRE("https://www.example.com/" == uri.GenerateString());
+}
+
+TEST_CASE("Query is present but empty", "Uri")// NOLINT
+{
+  Uri::Uri uri;
+
+  std::string query_string{ "https://www.example.com?" };
+  std::string no_query_string{ "https://www.example.com" };
+
+  REQUIRE(uri.ParseFromString(query_string));
+  REQUIRE(uri.HasQuery());
+  REQUIRE(uri.GetQuery().empty());
+  REQUIRE("https://www.example.com/?" == uri.GenerateString());
+  uri.ClearQuery();
+  REQUIRE("https://www.example.com/" == uri.GenerateString());
+
+  REQUIRE(uri.ParseFromString(no_query_string));
+  REQUIRE_FALSE(uri.HasQuery());
+  REQUIRE("https://www.example.com/" == uri.GenerateString());
 }
