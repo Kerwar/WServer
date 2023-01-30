@@ -581,6 +581,38 @@ struct Uri::Implementation
     return !decoding_percent_charcater;
   }
 };
+char MakeHexDigit(unsigned int value)
+{
+  const int LETTER_DISPLACEMENT = 10;
+  if (value < LETTER_DISPLACEMENT) {
+    return static_cast<char>(value + '0');
+  } else {
+    return static_cast<char>(value - LETTER_DISPLACEMENT + 'A');
+  }
+}
+
+std::string EncodeElement(const std::string &element,
+  const CharacterSet &allowedCharacter)
+{
+  const unsigned int HEX_DISPLACEMENT = 4;
+  const unsigned int HEX_THING = 0x0F;
+  std::string encodedElement;
+
+  for (const auto &character : element) {
+
+    if (allowedCharacter.Contains(character)) {
+      encodedElement.push_back(character);
+    } else {
+      encodedElement.push_back('%');
+      encodedElement.push_back(
+        MakeHexDigit(static_cast<unsigned int>(character) >> HEX_DISPLACEMENT));
+      encodedElement.push_back(
+        MakeHexDigit(static_cast<unsigned int>(character) & HEX_THING));
+    }
+  }
+
+  return encodedElement;
+}
 
 Uri::~Uri() = default;
 
@@ -823,26 +855,36 @@ std::string Uri::GenerateString() const
   std::ostringstream buffer;
 
   if (!impl_->scheme.empty()) { buffer << impl_->scheme << ":"; }
+
   if (impl_->HasAuthority()) {
     buffer << "//";
-    if (!impl_->user_name.empty()) { buffer << impl_->user_name << "@"; }
-    if (impl_->ValidateIpv6Address(impl_->host)) {
-      buffer << '[' << impl_->host << ']';
-    } else {
-      buffer << impl_->host;
+
+    if (!impl_->user_name.empty()) {
+      buffer << EncodeElement(impl_->user_name, USER_NAME) << "@";
     }
+
+    if (impl_->ValidateIpv6Address(impl_->host)) {
+      buffer << '[' << NormalizeCaseInsensitiveString(impl_->host) << ']';
+    } else {
+      buffer << EncodeElement(impl_->host, REG_NAME_NOT_PCT_ENCODED);
+    }
+
+    if (impl_->has_port) { buffer << ':' << impl_->port; }
   }
 
   if (IsAbsolutePath() && impl_->path.size() == 1) { buffer << "/"; }
   size_t position = 0;
   for (const auto &segment : impl_->path) {
-    // if (&segment != &(impl_->path.front())) { buffer << "/"; }
-    buffer << segment;
+    buffer << EncodeElement(segment, PCHAR_NOT_PCT_ENCODED);
     if (++position < impl_->path.size()) { buffer << "/"; }
   }
 
-  if (impl_->has_query) { buffer << "?" << impl_->query; }
-  if (impl_->has_fragment) { buffer << "#" << impl_->fragment; }
+  if (impl_->has_query) {
+    buffer << "?" << EncodeElement(impl_->query, QUERY_OR_FRAGMENT);
+  }
+  if (impl_->has_fragment) {
+    buffer << "#" << EncodeElement(impl_->fragment, QUERY_OR_FRAGMENT);
+  }
 
   return buffer.str();
 }

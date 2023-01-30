@@ -778,7 +778,7 @@ TEST_CASE("Generate String from URI", "Uri")
       "foobar",
       true,
       "ch2",
-      "http://bob@www.example.com/abc/def?foobar#ch2" },
+      "http://bob@www.example.com:8080/abc/def?foobar#ch2" },
     { "",
       "",
       "www.example.com",
@@ -789,7 +789,7 @@ TEST_CASE("Generate String from URI", "Uri")
       "foobar",
       false,
       "",
-      "//www.example.com?foobar" },
+      "//www.example.com:0?foobar" },
     { "",
       "",
       "www.example.com",
@@ -912,4 +912,112 @@ TEST_CASE("Query is present but empty", "Uri")// NOLINT
   REQUIRE(uri.ParseFromString(no_query_string));
   REQUIRE_FALSE(uri.HasQuery());
   REQUIRE("https://www.example.com/" == uri.GenerateString());
+}
+
+TEST_CASE("Generate String from URI with percent encoded character ", "Uri")
+{
+  struct TestVector
+  {
+    std::string scheme;
+    std::string user_name;
+    std::string host;
+    bool has_port;
+    u_int16_t port;
+    std::vector<std::string> path;
+    bool has_query;
+    std::string query;
+    bool has_fragment;
+    std::string fragment;
+    std::string uri_string;
+  };
+
+  const std::vector<TestVector> test_vectors{
+    { "http",
+      "b b",
+      "www.example.com",
+      true,
+      8080,
+      { "", "abc", "def" },
+      true,
+      "foobar",
+      true,
+      "ch2",
+      "http://b%20b@www.example.com:8080/abc/def?foobar#ch2" },
+    { "http",
+      "bob",
+      "www.e ample.com",
+      true,
+      8080,
+      { "", "abc", "def" },
+      true,
+      "foobar",
+      true,
+      "ch2",
+      "http://bob@www.e%20ample.com:8080/abc/def?foobar#ch2" },
+    { "http",
+      "bob",
+      "www.example.com",
+      true,
+      8080,
+      { "", "a c", "def" },
+      true,
+      "foobar",
+      true,
+      "ch2",
+      "http://bob@www.example.com:8080/a%20c/def?foobar#ch2" },
+    { "http",
+      "bob",
+      "www.example.com",
+      true,
+      8080,
+      { "", "abc", "def" },
+      true,
+      "foo ar",
+      true,
+      "ch2",
+      "http://bob@www.example.com:8080/abc/def?foo%20ar#ch2" },
+    { "http",
+      "bob",
+      "www.example.com",
+      true,
+      8080,
+      { "", "abc", "def" },
+      true,
+      "foobar",
+      true,
+      "c 2",
+      "http://bob@www.example.com:8080/abc/def?foobar#c%202" },
+    { "http",
+      "bob",
+      "fFfF::1",
+      true,
+      8080,
+      { "", "abc", "def" },
+      true,
+      "foobar",
+      true,
+      "c 2",
+      "http://bob@[ffff::1]:8080/abc/def?foobar#c%202" },
+  };
+
+  for (const auto &test_vector : test_vectors) {
+    Uri::Uri uri;
+
+    uri.SetScheme(test_vector.scheme);
+    uri.SetUserName(test_vector.user_name);
+    uri.SetHost(test_vector.host);
+
+    if (test_vector.has_port) {
+      uri.SetPort(test_vector.port);
+    } else {
+      uri.ClearPort();
+    }
+
+    uri.SetPath(test_vector.path);
+    if (test_vector.has_query) { uri.SetQuery(test_vector.query); }
+    if (test_vector.has_fragment) { uri.SetFragment(test_vector.fragment); }
+
+    INFO(test_vector.uri_string);
+    REQUIRE(test_vector.uri_string == uri.GenerateString());
+  }
 }
