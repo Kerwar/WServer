@@ -9,9 +9,7 @@ struct CharacterSet::Implementation
 };
 
 CharacterSet::~CharacterSet() noexcept = default;
-CharacterSet::CharacterSet(const CharacterSet &other)
-  : impl_(new Implementation(*other.impl_))
-{}
+CharacterSet::CharacterSet(const CharacterSet &other) : impl_(new Implementation(*other.impl_)) {}
 CharacterSet::CharacterSet(CharacterSet &&) noexcept = default;
 CharacterSet &CharacterSet::operator=(const CharacterSet &other)
 {
@@ -36,8 +34,7 @@ CharacterSet::CharacterSet(char first, char last) : impl_(new Implementation)
   }
 }
 
-CharacterSet::CharacterSet(
-  std::initializer_list<const CharacterSet> character_sets)
+CharacterSet::CharacterSet(std::initializer_list<const CharacterSet> character_sets)
   : impl_(new Implementation)
 {
   for (auto set : character_sets) {
@@ -48,8 +45,7 @@ CharacterSet::CharacterSet(
 
 bool CharacterSet::Contains(char character) const
 {
-  return impl_->character_in_set.find(character)
-         != impl_->character_in_set.end();
+  return impl_->character_in_set.find(character) != impl_->character_in_set.end();
 }
 
 }// namespace Uri

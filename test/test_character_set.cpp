@@ -40,12 +40,10 @@ TEST_CASE("Range constructor", "CharacterSet")
 
 TEST_CASE("Initializer list constructor", "CharacterSet")
 {
-  Uri::CharacterSet character_set{ Uri::CharacterSet('A', 'G'),
-    Uri::CharacterSet('f', 'm') };
+  Uri::CharacterSet character_set{ Uri::CharacterSet('A', 'G'), Uri::CharacterSet('f', 'm') };
 
   for (char character = 0; character < last_character; ++character) {
-    if ((character >= 'A' && character <= 'G')
-        || (character >= 'f' && character <= 'm')) {
+    if ((character >= 'A' && character <= 'G') || (character >= 'f' && character <= 'm')) {
       REQUIRE(character_set.Contains(character));
     } else {
       REQUIRE_FALSE(character_set.Contains(character));

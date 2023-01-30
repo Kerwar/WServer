@@ -173,10 +173,7 @@ TEST_CASE("Parse String with query and fragment", "Uri")
     { "https://example.com?foo", "example.com", "foo", "" },
     { "https://example.com#foo", "example.com", "", "foo" },
     { "https://www.example.com?foo#bar", "www.example.com", "foo", "bar" },
-    { "https://www.example.com?foo?earth#bar",
-      "www.example.com",
-      "foo?earth",
-      "bar" },
+    { "https://www.example.com?foo?earth#bar", "www.example.com", "foo?earth", "bar" },
     { "https://www.example.com/spam?foo#bar", "www.example.com", "foo", "bar" },
     { "/?foo#bar", "", "foo", "bar" },
   };
@@ -694,8 +691,7 @@ TEST_CASE("Resolve relative refence form a base Uri", "Uri")
   }
 }
 
-TEST_CASE(
-  "Empty path in Uri whit authority is equivalent to slash only path",// NOLINT
+TEST_CASE("Empty path in Uri whit authority is equivalent to slash only path",// NOLINT
   "Uri")
 {
   Uri::Uri uri1;
@@ -790,28 +786,8 @@ TEST_CASE("Generate String from URI", "Uri")
       false,
       "",
       "//www.example.com:0?foobar" },
-    { "",
-      "",
-      "www.example.com",
-      false,
-      0,
-      {},
-      false,
-      "",
-      false,
-      "",
-      "//www.example.com" },
-    { "",
-      "",
-      "www.example.com",
-      false,
-      0,
-      { "" },
-      false,
-      "",
-      false,
-      "",
-      "//www.example.com/" },
+    { "", "", "www.example.com", false, 0, {}, false, "", false, "", "//www.example.com" },
+    { "", "", "www.example.com", false, 0, { "" }, false, "", false, "", "//www.example.com/" },
     { "",
       "",
       "www.example.com",
@@ -841,17 +817,7 @@ TEST_CASE("Generate String from URI", "Uri")
     { "", "", "", false, 0, {}, true, "bar", false, "", "?bar" },
     { "https", "", "", false, 0, {}, true, "bar", false, "", "https:?bar" },
     { "https", "", "::1", false, 0, {}, false, "", false, "", "https://[::1]" },
-    { "http",
-      "bob",
-      "",
-      false,
-      0,
-      {},
-      true,
-      "foobar",
-      false,
-      "",
-      "http://bob@?foobar" },
+    { "http", "bob", "", false, 0, {}, true, "foobar", false, "", "http://bob@?foobar" },
   };
 
   for (const auto &test_vector : test_vectors) {

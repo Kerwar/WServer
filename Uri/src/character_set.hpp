@@ -70,8 +70,7 @@ private:
 };
 
 inline const CharacterSet DIGITS{ CharacterSet('0', '9') };
-inline const CharacterSet ALPHA{ CharacterSet('A', 'Z'),
-  CharacterSet('a', 'z') };
+inline const CharacterSet ALPHA{ CharacterSet('A', 'Z'), CharacterSet('a', 'z') };
 inline const CharacterSet HEX_DIGIT{ CharacterSet('A', 'F'),
   CharacterSet('a', 'f'),
   CharacterSet('0', '9') };
@@ -79,10 +78,7 @@ inline const CharacterSet UNRESERVED{ ALPHA, DIGITS, '-', '.', '_', '~' };
 inline const CharacterSet SUB_DELIMS =
   CharacterSet{ '!', '$', '&', '\'', '(', ')', '*', '+', ',', ';', '=' };
 inline const CharacterSet SCHEME_NOT_FIRST{ ALPHA, DIGITS, '+', '-', '.' };
-inline const CharacterSet PCHAR_NOT_PCT_ENCODED{ UNRESERVED,
-  SUB_DELIMS,
-  ':',
-  '@' };
+inline const CharacterSet PCHAR_NOT_PCT_ENCODED{ UNRESERVED, SUB_DELIMS, ':', '@' };
 inline const CharacterSet REG_NAME_NOT_PCT_ENCODED{
   UNRESERVED,
   SUB_DELIMS,
@@ -90,10 +86,7 @@ inline const CharacterSet REG_NAME_NOT_PCT_ENCODED{
 };
 inline const CharacterSet USER_NAME{ UNRESERVED, SUB_DELIMS, ':' };
 inline const CharacterSet IPVFUTURE_LAST{ UNRESERVED, SUB_DELIMS, ':', ']' };
-inline const CharacterSet QUERY_OR_FRAGMENT{ PCHAR_NOT_PCT_ENCODED,
-  ':',
-  '?',
-  '/' };
+inline const CharacterSet QUERY_OR_FRAGMENT{ PCHAR_NOT_PCT_ENCODED, ':', '?', '/' };
 
 }// namespace Uri
 

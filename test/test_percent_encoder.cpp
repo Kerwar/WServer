@@ -2,8 +2,7 @@
 
 #include "../Uri/src/percent_encoded_character_decoder.hpp"
 
-TEST_CASE("Good sequence of encoded characters",
-  "[PercentEncodedCharacterDecoder]")
+TEST_CASE("Good sequence of encoded characters", "[PercentEncodedCharacterDecoder]")
 {
   struct TestVector
   {
@@ -23,13 +22,11 @@ TEST_CASE("Good sequence of encoded characters",
     REQUIRE(percent_decoder.NextEncodedCharacter(test_vector.characters[0]));
     REQUIRE(percent_decoder.NextEncodedCharacter(test_vector.characters[1]));
     REQUIRE(percent_decoder.Done());
-    REQUIRE(
-      test_vector.decoded_character == percent_decoder.GetDecodedCharacter());
+    REQUIRE(test_vector.decoded_character == percent_decoder.GetDecodedCharacter());
   }
 }
 
-TEST_CASE("Bad sequence of encoded characters",
-  "[PercentEncodedCharacterDecoder]")
+TEST_CASE("Bad sequence of encoded characters", "[PercentEncodedCharacterDecoder]")
 {
   std::vector<char> test_vectors{
     'G',

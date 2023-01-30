@@ -30,8 +30,7 @@ namespace {
  * An indication if the candidate passes the test
  */
 
-bool FailsMatch(const std::string &candidate,
-  const std::function<bool(char, bool)> &StillPassing)
+bool FailsMatch(const std::string &candidate, const std::function<bool(char, bool)> &StillPassing)
 {
   for (const auto character : candidate) {
     if (!StillPassing(character, false)) { return true; }
@@ -102,9 +101,8 @@ struct Uri::Implementation
 
     if (authority_end == std::string::npos) {
       auto other_authority_end = uri_string.find_first_of("?#");
-      authority_end = other_authority_end == std::string::npos
-                        ? uri_string.length()
-                        : other_authority_end;
+      authority_end =
+        other_authority_end == std::string::npos ? uri_string.length() : other_authority_end;
     }
 
     auto authority = uri_string.substr(2, authority_end - 2);
@@ -120,10 +118,8 @@ struct Uri::Implementation
       if (!DecodeElement(user_name, USER_NAME)) { return false; }
     }
 
-    auto port_delimiter =
-      authority[0] != '[' ? authority.find(':') : std::string::npos;
-    if (port_delimiter < authority.find(']')
-        && authority.find(']') != std::string::npos) {
+    auto port_delimiter = authority[0] != '[' ? authority.find(':') : std::string::npos;
+    if (port_delimiter < authority.find(']') && authority.find(']') != std::string::npos) {
       port_delimiter = authority.find(':', port_delimiter + 1);
     }
 
@@ -136,11 +132,10 @@ struct Uri::Implementation
       if (!UncodeHost(coded_host)) { return false; }
       try {
         const std::shared_ptr<size_t> end_of_number(new size_t);
-        const std::string port_segment = authority.substr(
-          port_delimiter + 1, authority_end - port_delimiter - 1);
+        const std::string port_segment =
+          authority.substr(port_delimiter + 1, authority_end - port_delimiter - 1);
 
-        port =
-          static_cast<uint16_t>(std::stoul(port_segment, end_of_number.get()));
+        port = static_cast<uint16_t>(std::stoul(port_segment, end_of_number.get()));
         const auto signed_port = std::stoi(port_segment);
 
         if (*end_of_number != port_segment.size()) { return false; }
@@ -165,9 +160,8 @@ struct Uri::Implementation
       IPv4address,
     };
 
-    Decoded_state decode_state = coded_host.empty()
-                                   ? Decoded_state::normal_state
-                                   : Decoded_state::first_character;
+    Decoded_state decode_state =
+      coded_host.empty() ? Decoded_state::normal_state : Decoded_state::first_character;
     PercentEncodedCharacterDecoder percent_decoder;
 
     for (auto character : coded_host) {
@@ -214,8 +208,7 @@ struct Uri::Implementation
 
   bool DecodeIP(const std::string &coded_host)
   {
-    const std::string inside_brackets =
-      coded_host.substr(1, coded_host.length() - 2);
+    const std::string inside_brackets = coded_host.substr(1, coded_host.length() - 2);
     if (coded_host[0] != '[' || coded_host.back() != ']') { return false; }
     if (inside_brackets[0] == 'v') { return DecodeIPvFuture(inside_brackets); }
 
@@ -375,8 +368,7 @@ struct Uri::Implementation
       ++position;
     }
 
-    if (current_state == ValidationState::NotIPV4
-        || current_state == ValidationState::MaybeIPV4) {
+    if (current_state == ValidationState::NotIPV4 || current_state == ValidationState::MaybeIPV4) {
       ++number_groups;
     }
     if (position == address.length()
@@ -388,9 +380,7 @@ struct Uri::Implementation
     const size_t MAX_GROUPS = 8;
 
     if (ipv4_encountered) {
-      if (!ValidateIpv4Address(address.substr(potential_ipv4_start))) {
-        return false;
-      }
+      if (!ValidateIpv4Address(address.substr(potential_ipv4_start))) { return false; }
       number_groups += 2;
     }
 
@@ -485,19 +475,17 @@ struct Uri::Implementation
             path.push_back(URL);
             URL.clear();
           } else if (path_delimiter != 0) {
-            path.emplace_back(
-              URL.begin(), URL.begin() + static_cast<int>(path_delimiter));
+            path.emplace_back(URL.begin(), URL.begin() + static_cast<int>(path_delimiter));
           }
           break;
         } else {
           if (path_delimiter > query_fragment_delimiter) {
-            path.emplace_back(URL.begin(),
-              URL.begin() + static_cast<int>(query_fragment_delimiter));
+            path.emplace_back(
+              URL.begin(), URL.begin() + static_cast<int>(query_fragment_delimiter));
             URL = URL.substr(query_fragment_delimiter);
             break;
           }
-          path.emplace_back(
-            URL.begin(), URL.begin() + static_cast<int>(path_delimiter));
+          path.emplace_back(URL.begin(), URL.begin() + static_cast<int>(path_delimiter));
           URL = URL.substr(path_delimiter + 1);
         }
       }
@@ -539,8 +527,7 @@ struct Uri::Implementation
         query.clear();
       } else {
         has_query = true;
-        query = uri_string.substr(
-          query_delimiter + 1, fragment_delimiter - query_delimiter - 1);
+        query = uri_string.substr(query_delimiter + 1, fragment_delimiter - query_delimiter - 1);
         if (!DecodeElement(query, QUERY_OR_FRAGMENT)) {
           query.clear();
           return false;
@@ -550,8 +537,7 @@ struct Uri::Implementation
     return true;
   }
 
-  bool static DecodeElement(std::string &element,
-    const CharacterSet &allowed_characters)
+  bool static DecodeElement(std::string &element, const CharacterSet &allowed_characters)
   {
     auto coded_string = std::move(element);
     element.clear();
@@ -591,8 +577,7 @@ char MakeHexDigit(unsigned int value)
   }
 }
 
-std::string EncodeElement(const std::string &element,
-  const CharacterSet &allowedCharacter)
+std::string EncodeElement(const std::string &element, const CharacterSet &allowedCharacter)
 {
   const unsigned int HEX_DISPLACEMENT = 4;
   const unsigned int HEX_THING = 0x0F;
@@ -606,8 +591,7 @@ std::string EncodeElement(const std::string &element,
       encodedElement.push_back('%');
       encodedElement.push_back(
         MakeHexDigit(static_cast<unsigned int>(character) >> HEX_DISPLACEMENT));
-      encodedElement.push_back(
-        MakeHexDigit(static_cast<unsigned int>(character) & HEX_THING));
+      encodedElement.push_back(MakeHexDigit(static_cast<unsigned int>(character) & HEX_THING));
     }
   }
 
@@ -620,13 +604,10 @@ Uri::Uri() : impl_(new Implementation) {}
 
 bool Uri::operator==(const Uri &other) const
 {
-  return impl_->scheme == other.impl_->scheme
-         && impl_->user_name == other.impl_->user_name
+  return impl_->scheme == other.impl_->scheme && impl_->user_name == other.impl_->user_name
          && impl_->host == other.impl_->host && impl_->port == other.impl_->port
-         && impl_->has_port == other.impl_->has_port
-         && impl_->path == other.impl_->path
-         && impl_->query == other.impl_->query
-         && impl_->fragment == other.impl_->fragment;
+         && impl_->has_port == other.impl_->has_port && impl_->path == other.impl_->path
+         && impl_->query == other.impl_->query && impl_->fragment == other.impl_->fragment;
 };
 
 bool Uri::operator!=(const Uri &other) const { return !(*this == other); }
@@ -659,8 +640,7 @@ bool Uri::ParseFromString(const std::string &uri_string)
   if (!impl_->ParseScheme(uri_string)) { return false; }
 
   auto scheme_end = uri_string.find(':');
-  auto uri_left =
-    impl_->scheme.empty() ? uri_string : uri_string.substr(scheme_end + 1);
+  auto uri_left = impl_->scheme.empty() ? uri_string : uri_string.substr(scheme_end + 1);
 
   if (uri_left.substr(0, 2) == "//") {
     if (!impl_->ParseHost(uri_left)) { return false; }
@@ -668,9 +648,7 @@ bool Uri::ParseFromString(const std::string &uri_string)
 
   if (!impl_->ParsePath(uri_left)) { return false; }
 
-  if (!impl_->host.empty() && impl_->path.empty()) {
-    impl_->path.emplace_back("");
-  }
+  if (!impl_->host.empty() && impl_->path.empty()) { impl_->path.emplace_back(""); }
 
   if (!uri_left.empty()) {
     if (!impl_->ParseQueryAndFragment(uri_left)) { return false; };
@@ -699,10 +677,7 @@ bool Uri::IsRelativeReference() const { return impl_->scheme.empty(); }
 
 bool Uri::IsRelativePath() const { return !IsAbsolutePath(); }
 
-bool Uri::IsAbsolutePath() const
-{
-  return !impl_->path.empty() && impl_->path.front().empty();
-}
+bool Uri::IsAbsolutePath() const { return !impl_->path.empty() && impl_->path.front().empty(); }
 
 void Uri::NormalizePath()
 {
@@ -714,16 +689,12 @@ void Uri::NormalizePath()
     if (old_path[0] == ".") {
       if (old_path.size() == 1) { impl_->path.emplace_back(""); }
     } else if (old_path[0] == "..") {
-      if (!impl_->path.empty()
-          && (!impl_->path[0].empty() || impl_->path.size() > 1)) {
+      if (!impl_->path.empty() && (!impl_->path[0].empty() || impl_->path.size() > 1)) {
         impl_->path.pop_back();
-        if (old_path.size() == 1 && !impl_->path.back().empty()) {
-          impl_->path.emplace_back("");
-        }
+        if (old_path.size() == 1 && !impl_->path.back().empty()) { impl_->path.emplace_back(""); }
       }
     } else {
-      if (!old_path[0].empty() || impl_->path.empty()
-          || !impl_->path.back().empty()) {
+      if (!old_path[0].empty() || impl_->path.empty() || !impl_->path.back().empty()) {
         impl_->path.push_back(old_path[0]);
       }
     }
@@ -792,17 +763,11 @@ void Uri::CopyAndNormalizePath(const Uri &other)
 
 void Uri::CopyQuery(const Uri &other) { impl_->query = other.impl_->query; }
 
-void Uri::CopyFragment(const Uri &other)
-{
-  impl_->fragment = other.impl_->fragment;
-}
+void Uri::CopyFragment(const Uri &other) { impl_->fragment = other.impl_->fragment; }
 
 void Uri::SetScheme(const std::string &scheme) { impl_->scheme = scheme; }
 
-void Uri::SetUserName(const std::string &user_name)
-{
-  impl_->user_name = user_name;
-}
+void Uri::SetUserName(const std::string &user_name) { impl_->user_name = user_name; }
 
 void Uri::SetHost(const std::string &host) { impl_->host = host; }
 
@@ -859,9 +824,7 @@ std::string Uri::GenerateString() const
   if (impl_->HasAuthority()) {
     buffer << "//";
 
-    if (!impl_->user_name.empty()) {
-      buffer << EncodeElement(impl_->user_name, USER_NAME) << "@";
-    }
+    if (!impl_->user_name.empty()) { buffer << EncodeElement(impl_->user_name, USER_NAME) << "@"; }
 
     if (impl_->ValidateIpv6Address(impl_->host)) {
       buffer << '[' << NormalizeCaseInsensitiveString(impl_->host) << ']';
@@ -879,12 +842,8 @@ std::string Uri::GenerateString() const
     if (++position < impl_->path.size()) { buffer << "/"; }
   }
 
-  if (impl_->has_query) {
-    buffer << "?" << EncodeElement(impl_->query, QUERY_OR_FRAGMENT);
-  }
-  if (impl_->has_fragment) {
-    buffer << "#" << EncodeElement(impl_->fragment, QUERY_OR_FRAGMENT);
-  }
+  if (impl_->has_query) { buffer << "?" << EncodeElement(impl_->query, QUERY_OR_FRAGMENT); }
+  if (impl_->has_fragment) { buffer << "#" << EncodeElement(impl_->fragment, QUERY_OR_FRAGMENT); }
 
   return buffer.str();
 }
