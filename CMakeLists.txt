@@ -137,7 +137,7 @@ add_subdirectory(Uri)
 option(ENABLE_TESTING "Enable the tests" ${PROJECT_IS_TOP_LEVEL})
 if(ENABLE_TESTING)
   enable_testing()
-  add_subdirectory(test)
+  #   add_subdirectory(test)
 endif()
 
 option(ENABLE_FUZZING "Enable the fuzz tests" OFF)

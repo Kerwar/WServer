@@ -1,6 +1,6 @@
 #include <catch2/catch.hpp>
 
-#include "../Uri/src/percent_encoded_character_decoder.hpp"
+#include "../src/percent_encoded_character_decoder.hpp"
 
 TEST_CASE("Good sequence of encoded characters", "[PercentEncodedCharacterDecoder]")
 {

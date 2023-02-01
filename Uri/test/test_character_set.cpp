@@ -1,4 +1,4 @@
-#include "../Uri/src/character_set.hpp"
+#include "../src/character_set.hpp"
 #include <catch2/catch.hpp>
 
 const char last_character = static_cast<char>(0x7F);

@@ -1,4 +1,4 @@
-#include "../Uri/headers/uri.hpp"
+#include "../headers/uri.hpp"
 #include <catch2/catch.hpp>
 #include <sys/types.h>
 

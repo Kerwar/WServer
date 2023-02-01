@@ -1,6 +1,6 @@
 #include <catch2/catch.hpp>
 
-#include "../Uri/src/normalize_case_insensitive_string.hpp"
+#include "../src/normalize_case_insensitive_string.hpp"
 
 TEST_CASE("Normalize case insentice string", "[NormalizeCaseInsensitiveString]")
 {
