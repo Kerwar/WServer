@@ -132,6 +132,7 @@ add_subdirectory(configured_files)
 # Adding the src:
 # add_subdirectory(src)
 add_subdirectory(Uri)
+add_subdirectory(InternetMessage)
 
 # Adding the tests:
 option(ENABLE_TESTING "Enable the tests" ${PROJECT_IS_TOP_LEVEL})
