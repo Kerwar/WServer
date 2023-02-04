@@ -62,8 +62,16 @@ public:
    * @return
    *    An indication of wheter or not the string has parsed successfully
    */
-  bool ParseFromString(const std::string &rawMessage);
+  bool ParseFromRawMessage(const std::string &rawMessage);
 
+  /**
+   * @brief This method returns the raw string internet message based on the
+   * headers and body that have been collected in the object.
+   *
+   * @return
+   *    The raw message
+   */
+  [[nodiscard]] std::string GenerateRawMessage() const;
   /**
    * This method return the collection of  headers attached to the message
    *

@@ -1,5 +1,6 @@
 #include "internet_message.hpp"
 #include <algorithm>
+#include <sstream>
 
 namespace {
 
@@ -45,7 +46,7 @@ InternetMessage::~InternetMessage() = default;
 
 InternetMessage::InternetMessage() : impl_(new Implementation) {}
 
-bool InternetMessage::ParseFromString(const std::string &rawMessage)
+bool InternetMessage::ParseFromRawMessage(const std::string &rawMessage)
 {
   size_t offset = 0;
 
@@ -68,6 +69,20 @@ bool InternetMessage::ParseFromString(const std::string &rawMessage)
 
   impl_->body = rawMessage.substr(offset);
   return true;
+}
+
+std::string InternetMessage::GenerateRawMessage() const
+{
+  std::stringstream rawMessage;
+
+  for (const auto &header : impl_->headers) {
+    rawMessage << header.name << ": " << header.value << "\r\n";
+  }
+
+  rawMessage << "\r\n";
+  rawMessage << impl_->body;
+
+  return rawMessage.str();
 }
 
 auto InternetMessage::GetHeaders() const -> Headers { return impl_->headers; }
