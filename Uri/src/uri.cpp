@@ -3,13 +3,17 @@
 #include "normalize_case_insensitive_string.hpp"
 #include "percent_encoded_character_decoder.hpp"
 
+#include <chrono>
 #include <cstdint>
+#include <cstdio>
 #include <functional>
 #include <iterator>
 #include <memory>
 #include <random>
+#include <sstream>
 #include <stdexcept>
 #include <string>
+#include <sys/types.h>
 
 namespace {
 /*
@@ -26,8 +30,7 @@ namespace {
  * An indication if the candidate passes the test
  */
 
-bool FailsMatch(const std::string &candidate,
-  const std::function<bool(char, bool)> &StillPassing)
+bool FailsMatch(const std::string &candidate, const std::function<bool(char, bool)> &StillPassing)
 {
   for (const auto character : candidate) {
     if (!StillPassing(character, false)) { return true; }
@@ -63,13 +66,21 @@ struct Uri::Implementation
   std::string scheme;
   std::string user_name;
   std::string host;
-  uint16_t port = 0000;
   bool has_port = false;
+  uint16_t port = 0000;
   std::vector<std::string> path;
+  bool has_query = false;
   std::string query;
+  bool has_fragment = false;
   std::string fragment;
 
   // Methods
+
+  [[nodiscard]] bool HasAuthority() const
+  {
+    return !host.empty() || !user_name.empty() || has_port;
+  }
+
   bool ParseScheme(const std::string &uri_string)
   {
     auto scheme_end = uri_string.find(':');
@@ -90,9 +101,8 @@ struct Uri::Implementation
 
     if (authority_end == std::string::npos) {
       auto other_authority_end = uri_string.find_first_of("?#");
-      authority_end = other_authority_end == std::string::npos
-                        ? uri_string.length()
-                        : other_authority_end;
+      authority_end =
+        other_authority_end == std::string::npos ? uri_string.length() : other_authority_end;
     }
 
     auto authority = uri_string.substr(2, authority_end - 2);
@@ -108,9 +118,8 @@ struct Uri::Implementation
       if (!DecodeElement(user_name, USER_NAME)) { return false; }
     }
 
-    auto port_delimiter = authority.find(':');
-    if (port_delimiter < authority.find(']')
-        && authority.find(']') != std::string::npos) {
+    auto port_delimiter = authority[0] != '[' ? authority.find(':') : std::string::npos;
+    if (port_delimiter < authority.find(']') && authority.find(']') != std::string::npos) {
       port_delimiter = authority.find(':', port_delimiter + 1);
     }
 
@@ -123,11 +132,10 @@ struct Uri::Implementation
       if (!UncodeHost(coded_host)) { return false; }
       try {
         const std::shared_ptr<size_t> end_of_number(new size_t);
-        const std::string port_segment = authority.substr(
-          port_delimiter + 1, authority_end - port_delimiter - 1);
+        const std::string port_segment =
+          authority.substr(port_delimiter + 1, authority_end - port_delimiter - 1);
 
-        port =
-          static_cast<uint16_t>(std::stoul(port_segment, end_of_number.get()));
+        port = static_cast<uint16_t>(std::stoul(port_segment, end_of_number.get()));
         const auto signed_port = std::stoi(port_segment);
 
         if (*end_of_number != port_segment.size()) { return false; }
@@ -144,7 +152,7 @@ struct Uri::Implementation
 
   bool UncodeHost(const std::string &coded_host)
   {
-    enum Decoded_state {
+    enum class Decoded_state {
       first_character,
       normal_state,
       hex_decode_character,
@@ -153,24 +161,24 @@ struct Uri::Implementation
     };
 
     Decoded_state decode_state =
-      coded_host.empty() ? normal_state : first_character;
+      coded_host.empty() ? Decoded_state::normal_state : Decoded_state::first_character;
     PercentEncodedCharacterDecoder percent_decoder;
 
     for (auto character : coded_host) {
 
       switch (decode_state) {
-      case first_character:
+      case Decoded_state::first_character:
         if (character == '[') {
-          decode_state = IPLiteral;
+          decode_state = Decoded_state::IPLiteral;
           break;
         }
-        decode_state = normal_state;
+        decode_state = Decoded_state::normal_state;
         [[fallthrough]];
 
-      case normal_state:
+      case Decoded_state::normal_state:
         if (character == '%') {
           percent_decoder = PercentEncodedCharacterDecoder();
-          decode_state = hex_decode_character;
+          decode_state = Decoded_state::hex_decode_character;
           break;
         } else if (REG_NAME_NOT_PCT_ENCODED.Contains(character)) {
           host.push_back(character);
@@ -178,100 +186,268 @@ struct Uri::Implementation
         }
         return false;
 
-      case hex_decode_character:
+      case Decoded_state::hex_decode_character:
         if (!percent_decoder.NextEncodedCharacter(character)) { return false; }
         if (percent_decoder.Done()) {
           host.push_back(percent_decoder.GetDecodedCharacter());
-          decode_state = normal_state;
+          decode_state = Decoded_state::normal_state;
         }
         break;
 
-      case IPLiteral:
+      case Decoded_state::IPLiteral:
         return DecodeIP(coded_host);
 
-      case IPv4address:
+      case Decoded_state::IPv4address:
         break;
       }
     }
 
     host = NormalizeCaseInsensitiveString(host);
-    return decode_state == normal_state;
+    return decode_state == Decoded_state::normal_state;
   }
 
   bool DecodeIP(const std::string &coded_host)
   {
-    enum States {
-      first_character,
-      IPv6address,
-    };
+    const std::string inside_brackets = coded_host.substr(1, coded_host.length() - 2);
+    if (coded_host[0] != '[' || coded_host.back() != ']') { return false; }
+    if (inside_brackets[0] == 'v') { return DecodeIPvFuture(inside_brackets); }
 
-    States decode_state = first_character;
-    for (auto character : coded_host) {
-      switch (decode_state) {
-      case first_character:
-        if (character == '[') { return DecodeIPvFuture(coded_host); }
-        host.push_back(character);
-        break;
-
-      case IPv6address:
-        if (character == ']') {
-          host.push_back(character);
-          break;
-        }
-        return false;
-      }
-    }
-
-    return true;
+    return ValidateIpv6Address(inside_brackets);
   }
 
   bool DecodeIPvFuture(const std::string &coded_host)
   {
-    enum States {
+    enum class States {
       prefix,
       hexdigit,
       dot,
       sufix,
     };
 
-    States decode_state = prefix;
+    States decode_state = States::prefix;
 
     for (auto character : coded_host) {
       switch (decode_state) {
-      case prefix:
-        if (character == '[') {
-          host.push_back(character);
+      case States::prefix:
+        if (character != 'v') { return false; }
+        host.push_back(character);
+        decode_state = States::hexdigit;
+        break;
+
+      case States::hexdigit:
+        if (!HEX_DIGIT.Contains(character)) { return false; }
+        host.push_back(character);
+        decode_state = States::dot;
+        break;
+
+      case States::dot:
+        if (character != '.') { return false; }
+        host.push_back(character);
+        decode_state = States::sufix;
+        break;
+
+      case States::sufix:
+        if (!IPVFUTURE_LAST.Contains(character)) { return false; }
+        host.push_back(character);
+        break;
+      }
+    }
+
+    return decode_state == States::sufix;
+  }
+
+  bool ValidateIpv6Address(const std::string &address)// NOLINT
+  {
+    size_t number_groups = 0;
+    size_t number_digits = 0;
+    bool double_colon_encountered = false;
+    size_t potential_ipv4_start = 0;
+    size_t position = 0;
+    bool ipv4_encountered = false;
+
+    enum class ValidationState {
+      NoGroupYet,
+      ColonNoGroupYet,
+      MaybeIPV4,
+      NotIPV4,
+      AfterDoubleColon,
+      ColonAfterGroup,
+    };
+
+    ValidationState current_state = ValidationState::NoGroupYet;
+    for (const auto &character : address) {
+      switch (current_state) {
+      case ValidationState::NoGroupYet:
+        if (character == ':') {
+          current_state = ValidationState::ColonNoGroupYet;
           break;
-        } else if (character == 'v') {
-          host.push_back(character);
-          decode_state = hexdigit;
+        } else if (DIGITS.Contains(character)) {
+          potential_ipv4_start = position;
+          number_digits = 1;
+          current_state = ValidationState::MaybeIPV4;
+          break;
+        } else if (HEX_DIGIT.Contains(character)) {
+          current_state = ValidationState::NotIPV4;
+          number_digits = 1;
           break;
         }
         return false;
-      case hexdigit:
-        if (HEX_DIGIT.Contains(character)) {
-          host.push_back(character);
-          decode_state = dot;
+
+      case ValidationState::ColonNoGroupYet:
+        if (character == ':') {
+          double_colon_encountered = true;
+          current_state = ValidationState::AfterDoubleColon;
           break;
         }
         return false;
-      case dot:
+
+      case ValidationState::AfterDoubleColon:
+        if (DIGITS.Contains(character)) {
+          potential_ipv4_start = position;
+          if (++number_digits > 4) { return false; }
+          current_state = ValidationState::MaybeIPV4;
+          break;
+        } else if (HEX_DIGIT.Contains(character)) {
+          if (++number_digits > 4) { return false; }
+          current_state = ValidationState::NotIPV4;
+          break;
+        }
+        return false;
+
+      case ValidationState::NotIPV4:
+        if (character == ':') {
+          number_digits = 0;
+          number_groups++;
+          current_state = ValidationState::ColonAfterGroup;
+          break;
+        } else if (HEX_DIGIT.Contains(character)) {
+          if (++number_digits > 4) { return false; }
+          break;
+        }
+        return false;
+
+      case ValidationState::MaybeIPV4:
+        if (character == ':') {
+          number_digits = 0;
+          number_groups++;
+          current_state = ValidationState::ColonAfterGroup;
+          break;
+        } else if (character == '.') {
+          ipv4_encountered = true;
+          break;
+        } else if (DIGITS.Contains(character)) {
+          if (++number_digits > 4) { return false; }
+          break;
+        } else if (HEX_DIGIT.Contains(character)) {
+          if (++number_digits > 4) { return false; }
+          current_state = ValidationState::NotIPV4;
+          break;
+        }
+        return false;
+
+      case ValidationState::ColonAfterGroup:
+        if (character == ':') {
+          if (double_colon_encountered) { return false; }
+          double_colon_encountered = true;
+          current_state = ValidationState::AfterDoubleColon;
+          break;
+        } else if (DIGITS.Contains(character)) {
+          potential_ipv4_start = position;
+          ++number_digits;
+          current_state = ValidationState::MaybeIPV4;
+          break;
+        } else if (HEX_DIGIT.Contains(character)) {
+          if (++number_digits > 4) { return false; }
+          ++number_digits;
+          current_state = ValidationState::NotIPV4;
+          break;
+        }
+        return false;
+      }
+      if (ipv4_encountered) { break; }
+      ++position;
+    }
+
+    if (current_state == ValidationState::NotIPV4 || current_state == ValidationState::MaybeIPV4) {
+      ++number_groups;
+    }
+    if (position == address.length()
+        && (current_state == ValidationState::ColonNoGroupYet
+            || current_state == ValidationState::ColonAfterGroup)) {
+      return false;
+    }
+
+    const size_t MAX_GROUPS = 8;
+
+    if (ipv4_encountered) {
+      if (!ValidateIpv4Address(address.substr(potential_ipv4_start))) { return false; }
+      number_groups += 2;
+    }
+
+    host = address;
+    if (double_colon_encountered) {
+      return number_groups < MAX_GROUPS;
+    } else {
+      return number_groups == MAX_GROUPS;
+    }
+  }
+
+  static bool ValidateIpv4Address(const std::string &address)
+  {
+    const size_t MAX_GROUPS = 4;
+    size_t number_groups = 0;
+    std::string octet_buffer;
+
+    enum class ValidationState { OutOctet, DigitOrDot };
+
+    ValidationState current_state = ValidationState::OutOctet;
+
+    for (const auto &character : address) {
+      switch (current_state) {
+      case ValidationState::OutOctet:
+        if (!DIGITS.Contains(character)) { return false; }
+        octet_buffer.push_back(character);
+        current_state = ValidationState::DigitOrDot;
+        break;
+
+      case ValidationState::DigitOrDot:
         if (character == '.') {
-          host.push_back(character);
-          decode_state = sufix;
+          if (++number_groups > 4) { return false; }
+          if (!ValidateOctet(octet_buffer)) { return false; }
+          octet_buffer.clear();
+          current_state = ValidationState::OutOctet;
           break;
-        }
-        return false;
-      case sufix:
-        if (IPVFUTURE_LAST.Contains(character)) {
-          host.push_back(character);
+        } else if (DIGITS.Contains(character)) {
+          octet_buffer.push_back(character);
           break;
         }
         return false;
       }
     }
+    if (!octet_buffer.empty()) {
+      ++number_groups;
+      if (!ValidateOctet(octet_buffer)) { return false; }
+    }
 
-    return host.back() == ']';
+    return number_groups == MAX_GROUPS;
+  }
+
+  static bool ValidateOctet(const std::string &octet_string)
+  {
+    int octet = 0;
+    const int OCTET_SHIFT = 10;
+
+    for (const auto &character : octet_string) {
+      if (DIGITS.Contains(character)) {
+        octet *= OCTET_SHIFT;
+        octet += character - '0';
+      } else {
+        return false;
+      }
+    }
+
+    const int MAX_OCTET = 255;
+    return octet <= MAX_OCTET;
   }
 
   bool ParsePath(std::string &URL)
@@ -298,20 +474,18 @@ struct Uri::Implementation
           if (path_delimiter == std::string::npos) {
             path.push_back(URL);
             URL.clear();
-          } else {
-            path.emplace_back(
-              URL.begin(), URL.begin() + static_cast<int>(path_delimiter));
+          } else if (path_delimiter != 0) {
+            path.emplace_back(URL.begin(), URL.begin() + static_cast<int>(path_delimiter));
           }
           break;
         } else {
           if (path_delimiter > query_fragment_delimiter) {
-            path.emplace_back(URL.begin(),
-              URL.begin() + static_cast<int>(query_fragment_delimiter));
+            path.emplace_back(
+              URL.begin(), URL.begin() + static_cast<int>(query_fragment_delimiter));
             URL = URL.substr(query_fragment_delimiter);
             break;
           }
-          path.emplace_back(
-            URL.begin(), URL.begin() + static_cast<int>(path_delimiter));
+          path.emplace_back(URL.begin(), URL.begin() + static_cast<int>(path_delimiter));
           URL = URL.substr(path_delimiter + 1);
         }
       }
@@ -335,6 +509,7 @@ struct Uri::Implementation
       if (query_delimiter == std::string::npos) {
         query.clear();
       } else {
+        has_query = true;
         query = uri_string.substr(query_delimiter + 1);
         if (!DecodeElement(query, QUERY_OR_FRAGMENT)) {
           query.clear();
@@ -342,6 +517,7 @@ struct Uri::Implementation
         }
       }
     } else {
+      has_fragment = true;
       fragment = uri_string.substr(fragment_delimiter + 1);
       if (!DecodeElement(fragment, QUERY_OR_FRAGMENT)) {
         fragment.clear();
@@ -350,8 +526,8 @@ struct Uri::Implementation
       if (query_delimiter == std::string::npos) {
         query.clear();
       } else {
-        query = uri_string.substr(
-          query_delimiter + 1, fragment_delimiter - query_delimiter - 1);
+        has_query = true;
+        query = uri_string.substr(query_delimiter + 1, fragment_delimiter - query_delimiter - 1);
         if (!DecodeElement(query, QUERY_OR_FRAGMENT)) {
           query.clear();
           return false;
@@ -361,8 +537,7 @@ struct Uri::Implementation
     return true;
   }
 
-  bool static DecodeElement(std::string &element,
-    const CharacterSet &allowed_characters)
+  bool static DecodeElement(std::string &element, const CharacterSet &allowed_characters)
   {
     auto coded_string = std::move(element);
     element.clear();
@@ -392,6 +567,36 @@ struct Uri::Implementation
     return !decoding_percent_charcater;
   }
 };
+char MakeHexDigit(unsigned int value)
+{
+  const int LETTER_DISPLACEMENT = 10;
+  if (value < LETTER_DISPLACEMENT) {
+    return static_cast<char>(value + '0');
+  } else {
+    return static_cast<char>(value - LETTER_DISPLACEMENT + 'A');
+  }
+}
+
+std::string EncodeElement(const std::string &element, const CharacterSet &allowedCharacter)
+{
+  const unsigned int HEX_DISPLACEMENT = 4;
+  const unsigned int HEX_THING = 0x0F;
+  std::string encodedElement;
+
+  for (const auto &character : element) {
+
+    if (allowedCharacter.Contains(character)) {
+      encodedElement.push_back(character);
+    } else {
+      encodedElement.push_back('%');
+      encodedElement.push_back(
+        MakeHexDigit(static_cast<unsigned int>(character) >> HEX_DISPLACEMENT));
+      encodedElement.push_back(MakeHexDigit(static_cast<unsigned int>(character) & HEX_THING));
+    }
+  }
+
+  return encodedElement;
+}
 
 Uri::~Uri() = default;
 
@@ -399,30 +604,51 @@ Uri::Uri() : impl_(new Implementation) {}
 
 bool Uri::operator==(const Uri &other) const
 {
-  return impl_->scheme == other.impl_->scheme
-         && impl_->user_name == other.impl_->user_name
+  return impl_->scheme == other.impl_->scheme && impl_->user_name == other.impl_->user_name
          && impl_->host == other.impl_->host && impl_->port == other.impl_->port
-         && impl_->has_port == other.impl_->has_port
-         && impl_->path == other.impl_->path
-         && impl_->query == other.impl_->query
-         && impl_->fragment == other.impl_->fragment;
+         && impl_->has_port == other.impl_->has_port && impl_->path == other.impl_->path
+         && impl_->query == other.impl_->query && impl_->fragment == other.impl_->fragment;
 };
 
 bool Uri::operator!=(const Uri &other) const { return !(*this == other); }
 
+std::ostream &operator<<(std::ostream &out_stream, const Uri &uri)
+{
+  out_stream << "Scheme: \"" << uri.impl_->scheme << "\"\n";
+  out_stream << "User name: \"" << uri.impl_->user_name << "\"\n";
+  out_stream << "Host: \"" << uri.impl_->host << "\"\n";
+  out_stream << "Port: \"" << uri.impl_->port << "\"\n";
+  out_stream << "Path: \"";
+  for (const auto &segment : uri.impl_->path) {
+    out_stream << segment;
+    if (segment != uri.impl_->path.back()) {
+      out_stream << "/";
+    } else {
+      out_stream << "\"\n";
+    }
+  }
+  if (uri.impl_->path.empty()) { out_stream << "\"\n"; }
+  out_stream << "Query: \"" << uri.impl_->query << "\"\n";
+  out_stream << "Fragment \"" << uri.impl_->fragment << "\"\n";
+
+  return out_stream;
+}
+
 bool Uri::ParseFromString(const std::string &uri_string)
 {
+  impl_ = std::make_unique<Implementation>();
   if (!impl_->ParseScheme(uri_string)) { return false; }
 
   auto scheme_end = uri_string.find(':');
-  auto uri_left =
-    impl_->scheme.empty() ? uri_string : uri_string.substr(scheme_end + 1);
+  auto uri_left = impl_->scheme.empty() ? uri_string : uri_string.substr(scheme_end + 1);
 
   if (uri_left.substr(0, 2) == "//") {
     if (!impl_->ParseHost(uri_left)) { return false; }
   }
 
   if (!impl_->ParsePath(uri_left)) { return false; }
+
+  if (!impl_->host.empty() && impl_->path.empty()) { impl_->path.emplace_back(""); }
 
   if (!uri_left.empty()) {
     if (!impl_->ParseQueryAndFragment(uri_left)) { return false; };
@@ -449,14 +675,9 @@ std::string Uri::GetFragment() const { return impl_->fragment; }
 
 bool Uri::IsRelativeReference() const { return impl_->scheme.empty(); }
 
-bool Uri::IsRelativePath() const
-{
-  if (impl_->path.empty()) {
-    return true;
-  } else {
-    return !impl_->path[0].empty();
-  }
-}
+bool Uri::IsRelativePath() const { return !IsAbsolutePath(); }
+
+bool Uri::IsAbsolutePath() const { return !impl_->path.empty() && impl_->path.front().empty(); }
 
 void Uri::NormalizePath()
 {
@@ -465,14 +686,166 @@ void Uri::NormalizePath()
   impl_->path.clear();
 
   while (!old_path.empty()) {
-    if (old_path[0] == "." || (old_path[0] == ".." && impl_->path.empty())) {
-    } else if (old_path[0] == ".." && !impl_->path.empty()) {
-      impl_->path.pop_back();
+    if (old_path[0] == ".") {
+      if (old_path.size() == 1) { impl_->path.emplace_back(""); }
+    } else if (old_path[0] == "..") {
+      if (!impl_->path.empty() && (!impl_->path[0].empty() || impl_->path.size() > 1)) {
+        impl_->path.pop_back();
+        if (old_path.size() == 1 && !impl_->path.back().empty()) { impl_->path.emplace_back(""); }
+      }
     } else {
-      impl_->path.push_back(old_path[0]);
+      if (!old_path[0].empty() || impl_->path.empty() || !impl_->path.back().empty()) {
+        impl_->path.push_back(old_path[0]);
+      }
     }
     old_path.erase(old_path.begin());
   }
+}
+
+Uri Uri::Resolve(const Uri &relative_reference) const
+{
+  Uri target;
+
+  if (!relative_reference.impl_->scheme.empty()) {
+    target.impl_->scheme = relative_reference.impl_->scheme;
+    target.CopyAuthority(relative_reference);
+    target.CopyAndNormalizePath(relative_reference);
+    target.impl_->query = relative_reference.impl_->query;
+  } else {
+    if (!relative_reference.impl_->host.empty()) {
+      target.CopyAuthority(relative_reference);
+      target.CopyAndNormalizePath(relative_reference);
+      target.impl_->query = relative_reference.impl_->query;
+    } else {
+      if (relative_reference.impl_->path.empty()) {
+        target.CopyAndNormalizePath(*this);
+        if (!relative_reference.impl_->query.empty()) {
+          target.impl_->query = relative_reference.impl_->query;
+        } else {
+          target.impl_->query = impl_->query;
+        }
+      } else if (relative_reference.IsAbsolutePath()) {
+        target.impl_->path = relative_reference.impl_->path;
+        target.impl_->query = relative_reference.impl_->query;
+      } else {
+        target.impl_->path = impl_->path;
+        if (target.impl_->path.size() > 1) { target.impl_->path.pop_back(); }
+        std::copy(relative_reference.impl_->path.begin(),
+          relative_reference.impl_->path.end(),
+          std::back_inserter(target.impl_->path));
+        target.NormalizePath();
+        target.impl_->query = relative_reference.impl_->query;
+      }
+      target.CopyAuthority(*this);
+    }
+    target.impl_->scheme = impl_->scheme;
+  }
+
+  target.impl_->fragment = relative_reference.impl_->fragment;
+
+  return target;
+}
+
+void Uri::CopyScheme(const Uri &other) { impl_->scheme = other.impl_->scheme; }
+
+void Uri::CopyAuthority(const Uri &other)
+{
+  impl_->host = other.impl_->host;
+  impl_->user_name = other.impl_->user_name;
+  impl_->port = other.impl_->port;
+}
+
+void Uri::CopyAndNormalizePath(const Uri &other)
+{
+  impl_->path = other.impl_->path;
+  NormalizePath();
+}
+
+void Uri::CopyQuery(const Uri &other) { impl_->query = other.impl_->query; }
+
+void Uri::CopyFragment(const Uri &other) { impl_->fragment = other.impl_->fragment; }
+
+void Uri::SetScheme(const std::string &scheme) { impl_->scheme = scheme; }
+
+void Uri::SetUserName(const std::string &user_name) { impl_->user_name = user_name; }
+
+void Uri::SetHost(const std::string &host) { impl_->host = host; }
+
+void Uri::SetPort(const u_int16_t &port)
+{
+  impl_->port = port;
+  impl_->has_port = true;
+}
+
+void Uri::ClearPort()
+{
+  impl_->port = 0;
+  impl_->has_port = false;
+}
+
+
+void Uri::SetPath(const std::vector<std::string> &path) { impl_->path = path; }
+
+void Uri::SetQuery(const std::string &query)
+{
+  impl_->has_query = true;
+  impl_->query = query;
+}
+
+void Uri::ClearQuery()
+{
+  impl_->query.clear();
+  impl_->has_query = false;
+}
+
+bool Uri::HasQuery() const { return impl_->has_query; }
+
+void Uri::SetFragment(const std::string &fragment)
+{
+  impl_->has_fragment = true;
+  impl_->fragment = fragment;
+}
+
+void Uri::ClearFragment()
+{
+  impl_->fragment.clear();
+  impl_->has_fragment = false;
+}
+
+bool Uri::HasFragment() const { return impl_->has_fragment; }
+
+std::string Uri::GenerateString() const
+{
+
+  std::ostringstream buffer;
+
+  if (!impl_->scheme.empty()) { buffer << impl_->scheme << ":"; }
+
+  if (impl_->HasAuthority()) {
+    buffer << "//";
+
+    if (!impl_->user_name.empty()) { buffer << EncodeElement(impl_->user_name, USER_NAME) << "@"; }
+
+    if (impl_->ValidateIpv6Address(impl_->host)) {
+      buffer << '[' << NormalizeCaseInsensitiveString(impl_->host) << ']';
+    } else {
+      buffer << EncodeElement(impl_->host, REG_NAME_NOT_PCT_ENCODED);
+    }
+
+    if (impl_->has_port) { buffer << ':' << impl_->port; }
+  }
+
+  if (IsAbsolutePath() && impl_->path.size() == 1) { buffer << "/"; }
+  size_t position = 0;
+  for (const auto &segment : impl_->path) {
+    buffer << EncodeElement(segment, PCHAR_NOT_PCT_ENCODED);
+    if (++position < impl_->path.size()) { buffer << "/"; }
+  }
+
+  if (impl_->has_query) { buffer << "?" << EncodeElement(impl_->query, QUERY_OR_FRAGMENT); }
+  if (impl_->has_fragment) { buffer << "#" << EncodeElement(impl_->fragment, QUERY_OR_FRAGMENT); }
+
+  return buffer.str();
 }
 
 }// namespace Uri

@@ -1,7 +1,8 @@
-#include "../Uri/headers/uri.hpp"
+#include "../headers/uri.hpp"
 #include <catch2/catch.hpp>
+#include <sys/types.h>
 
-TEST_CASE("Parse String base case", "Uri")
+TEST_CASE("Parse String base case", "Uri")// NOLINT
 {
   Uri::Uri uri;
 
@@ -126,6 +127,7 @@ TEST_CASE("Parse String relative and non relative references", "Uri")
 
     Uri::Uri uri;
 
+    INFO("Path in: " + testVector.path_in);
     REQUIRE(uri.ParseFromString(testVector.path_in));
     REQUIRE(testVector.is_relative == uri.IsRelativeReference());
   }
@@ -141,7 +143,7 @@ TEST_CASE("Parse String relative and non relative path", "Uri")
 
   const std::vector<TestVector> testVectors{
     { "https://www.example.com/", false },
-    { "https://www.example.com", true },
+    { "https://www.example.com", false },
     { "foo", true },
     { "/", false },
   };
@@ -150,6 +152,7 @@ TEST_CASE("Parse String relative and non relative path", "Uri")
 
     Uri::Uri uri;
 
+    INFO("Path in: " + testVector.path_in);
     REQUIRE(uri.ParseFromString(testVector.path_in));
     REQUIRE(testVector.is_relative == uri.IsRelativePath());
   }
@@ -170,10 +173,7 @@ TEST_CASE("Parse String with query and fragment", "Uri")
     { "https://example.com?foo", "example.com", "foo", "" },
     { "https://example.com#foo", "example.com", "", "foo" },
     { "https://www.example.com?foo#bar", "www.example.com", "foo", "bar" },
-    { "https://www.example.com?foo?earth#bar",
-      "www.example.com",
-      "foo?earth",
-      "bar" },
+    { "https://www.example.com?foo?earth#bar", "www.example.com", "foo?earth", "bar" },
     { "https://www.example.com/spam?foo#bar", "www.example.com", "foo", "bar" },
     { "/?foo#bar", "", "foo", "bar" },
   };
@@ -185,6 +185,34 @@ TEST_CASE("Parse String with query and fragment", "Uri")
     REQUIRE(uri.ParseFromString(testVector.path_in));
     REQUIRE(testVector.host == uri.GetHost());
     REQUIRE(testVector.query == uri.GetQuery());
+    REQUIRE(testVector.fragment == uri.GetFragment());
+  }
+}
+
+TEST_CASE("Parse String with fragment corner cases", "Uri")
+{
+  struct TestVector
+  {
+    std::string path_in;
+    std::string fragment;
+  };
+
+  const std::vector<TestVector> testVectors{
+    { "/", "" },
+    { "/#", "" },
+    { "/#:/foo", ":/foo" },
+    { "#bob@foo", "bob@foo" },
+    { "#hello!", "hello!" },
+    { "run:#hello,%20w%6Frld", "hello, world" },
+    { "//example.com/foo#(bar)/", "(bar)/" },
+    { "//example.com/#foo?bar", "foo?bar" },
+  };
+
+  for (const auto &testVector : testVectors) {
+
+    Uri::Uri uri;
+    INFO(testVector.path_in);
+    REQUIRE(uri.ParseFromString(testVector.path_in));
     REQUIRE(testVector.fragment == uri.GetFragment());
   }
 }
@@ -359,8 +387,8 @@ TEST_CASE("Parse String with host corner cases", "Uri")
     { "//(/", "(" },
     { "//;/", ";" },
     { "//1.2.3.4/", "1.2.3.4" },
-    { "//[v7.:]/", "[v7.:]" },
-    { "//[v7.aB]/", "[v7.aB]" },
+    { "//[v7.:]/", "v7.:" },
+    { "//[v7.aB]/", "v7.aB" },
   };
 
   for (const auto &testVector : testVectors) {
@@ -452,9 +480,12 @@ TEST_CASE("Parse String with path corner cases", "Uri")
   const std::vector<TestVector> testVectors{
     { "/:/foo", { "", ":", "foo" } },
     { "bob@/foo", { "bob@", "foo" } },
+    { "bob@/foo/", { "bob@", "foo", "" } },
     { "hello!", { "hello!" } },
     { "urn:hello,%20w%6Frld", { "hello, world" } },
     { "//example.xom/foo/(bar", { "", "foo", "(bar" } },
+    { "?query", {} },
+    { "https://a/", { "" } },
   };
 
   for (const auto &testVector : testVectors) {
@@ -563,6 +594,26 @@ TEST_CASE("Normalize path", "Uri")
     { "/a/b/c/./../../g", { "", "a", "g" } },
     { "mid/constent=5/../6", { "mid", "6" } },
     { "../mid/constent=5/../6", { "mid", "6" } },
+    { "https://www.example.com/a/../b", { "", "b" } },
+    { "https://www.example.com/a/../../b", { "", "b" } },
+    { "./a/b", { "a", "b" } },
+    { "..", {} },
+    { "a/b/..", { "a", "" } },
+    { "a/b/.", { "a", "b", "" } },
+    { "a/b/./c", { "a", "b", "c" } },
+    { "a/b/./c/", { "a", "b", "c", "" } },
+    { "/a/b/..", { "", "a", "" } },
+    { "/a/b/.", { "", "a", "b", "" } },
+    { "/a/b/./c", { "", "a", "b", "c" } },
+    { "/a/b/./c/", { "", "a", "b", "c", "" } },
+    { "../a/b/..", { "a", "" } },
+    { "../a/b/.", { "a", "b", "" } },
+    { "../a/b/./c", { "a", "b", "c" } },
+    { "../a/b/./c/", { "a", "b", "c", "" } },
+    { "/./a/b/../c/", { "", "a", "c", "" } },
+    { "/../a/b/../c/", { "", "a", "c", "" } },
+    { "../../", { "" } },
+    { "../..", {} },
   };
 
   for (const auto &testVector : testVectors) {
@@ -587,4 +638,352 @@ TEST_CASE("Normalization and equivalent uri", "Uri")
   REQUIRE(uri1 != uri2);
   uri2.NormalizePath();
   REQUIRE(uri1 == uri2);
+}
+
+TEST_CASE("Resolve relative refence form a base Uri", "Uri")
+{
+  struct TestVector
+  {
+    std::string base;
+    std::string relative_reference_string;
+    std::string target_string;
+  };
+
+  const std::vector<TestVector> testVectors{
+    { "http://a/b/c/d;p?q", "g:h", "g:h" },
+    { "http://a/b/c/d;p?q", "g", "http://a/b/c/g" },
+    { "http://a/b/c/d;p?q", "./g", "http://a/b/c/g" },
+    { "http://a/b/c/d;p?q", "g/", "http://a/b/c/g/" },
+    { "http://a/b/c/d;p?q", "//g", "http://g" },
+    { "http://a/b/c/d;p?q", "?y", "http://a/b/c/d;p?y" },
+    { "http://a/b/c/d;p?q", "g?y", "http://a/b/c/g?y" },
+    { "http://a/b/c/d;p?q", "#s", "http://a/b/c/d;p?q#s" },
+    { "http://a/b/c/d;p?q", "g#s", "http://a/b/c/g#s" },
+    { "http://a/b/c/d;p?q", "g?y#s", "http://a/b/c/g?y#s" },
+    { "http://a/b/c/d;p?q", ";x", "http://a/b/c/;x" },
+    { "http://a/b/c/d;p?q", "g;x", "http://a/b/c/g;x" },
+    { "http://a/b/c/d;p?q", "g;x?y#s", "http://a/b/c/g;x?y#s" },
+    { "http://a/b/c/d;p?q", "", "http://a/b/c/d;p?q" },
+    { "http://a/b/c/d;p?q", ".", "http://a/b/c/" },
+    { "http://a/b/c/d;p?q", "./", "http://a/b/c/" },
+    { "http://a/b/c/d;p?q", "..", "http://a/b/" },
+    { "http://a/b/c/d;p?q", "../", "http://a/b/" },
+    { "http://a/b/c/d;p?q", "../g", "http://a/b/g" },
+    { "http://a/b/c/d;p?q", "../..", "http://a/" },
+    { "http://a/b/c/d;p?q", "../../", "http://a/" },
+    { "http://a/b/c/d;p?q", "../../g", "http://a/g" },
+    { "http://example.com", "foo", "http://example.com/foo" },
+  };
+
+  for (const auto &testVector : testVectors) {
+    Uri::Uri base_uri;
+    Uri::Uri relative_uri;
+    Uri::Uri expected_uri;
+
+    INFO("Relative uri: " + testVector.relative_reference_string);
+    REQUIRE(base_uri.ParseFromString(testVector.base));
+    REQUIRE(relative_uri.ParseFromString(testVector.relative_reference_string));
+    REQUIRE(expected_uri.ParseFromString(testVector.target_string));
+
+    const auto actual_target_uri = base_uri.Resolve(relative_uri);
+
+    REQUIRE(expected_uri == actual_target_uri);
+  }
+}
+
+TEST_CASE("Empty path in Uri whit authority is equivalent to slash only path",// NOLINT
+  "Uri")
+{
+  Uri::Uri uri1;
+  Uri::Uri uri2;
+
+  REQUIRE(uri1.ParseFromString("https://example.com"));
+  REQUIRE(uri2.ParseFromString("https://example.com/"));
+  REQUIRE(uri1 == uri2);
+
+  REQUIRE(uri1.ParseFromString("//example.com"));
+  REQUIRE(uri2.ParseFromString("//example.com/"));
+  REQUIRE(uri1 == uri2);
+}
+
+TEST_CASE("Parsing IPv6Address URI", "Uri")
+{
+  struct TestVector
+  {
+    std::string uri_string;
+    std::string expected_host;
+    bool is_valid;
+  };
+
+  const std::vector<TestVector> test_vectors{
+    { "http://[::1]/", "::1", true },
+    { "http://[::ffff:1.2.3.4]/", "::ffff:1.2.3.4", true },
+    { "http://[2001:db8:85a3:8d3:1319:8a2e:370:7348]/",
+      "2001:db8:85a3:8d3:1319:8a2e:370:7348",
+      true },
+
+    { "http://[::fxff:1.2.3.4]/", "", false },
+    { "http://[::ffff:1.2.x.4]/", "", false },
+    { "http://[::ffff:1.2.3.]/", "", false },
+    { "http://[::ffff:1.2]/", "", false },
+    { "http://[::ffff:1.2.3.256]/", "", false },
+    { "http://[2001:db8:85a3:8d3:1319:8a2e:370:7348:0000]/", "", false },
+    { "http://[2001:db8:85a3::8a2e:0:]/", "", false },
+    { "http://[2001:db8:85a3::8a2e::]/", "", false },
+    { "http://[]/", "", false },
+    { "http://[:]/", "", false },
+    { "http://[v]/", "", false },
+  };
+
+  for (const auto &test_vector : test_vectors) {
+    Uri::Uri uri;
+    const bool parse_result = uri.ParseFromString(test_vector.uri_string);
+
+    INFO(test_vector.uri_string);
+    REQUIRE(test_vector.is_valid == parse_result);
+
+    if (parse_result) { REQUIRE(test_vector.expected_host == uri.GetHost()); }
+  }
+}
+
+TEST_CASE("Generate String from URI", "Uri")
+{
+  struct TestVector
+  {
+    std::string scheme;
+    std::string user_name;
+    std::string host;
+    bool has_port;
+    u_int16_t port;
+    std::vector<std::string> path;
+    bool has_query;
+    std::string query;
+    bool has_fragment;
+    std::string fragment;
+    std::string uri_string;
+  };
+
+  const std::vector<TestVector> test_vectors{
+    { "http",
+      "bob",
+      "www.example.com",
+      true,
+      8080,
+      { "", "abc", "def" },
+      true,
+      "foobar",
+      true,
+      "ch2",
+      "http://bob@www.example.com:8080/abc/def?foobar#ch2" },
+    { "",
+      "",
+      "www.example.com",
+      true,
+      0,
+      {},
+      true,
+      "foobar",
+      false,
+      "",
+      "//www.example.com:0?foobar" },
+    { "", "", "www.example.com", false, 0, {}, false, "", false, "", "//www.example.com" },
+    { "", "", "www.example.com", false, 0, { "" }, false, "", false, "", "//www.example.com/" },
+    { "",
+      "",
+      "www.example.com",
+      false,
+      0,
+      { "", "xyz" },
+      false,
+      "",
+      false,
+      "",
+      "//www.example.com/xyz" },
+    { "",
+      "",
+      "www.example.com",
+      false,
+      0,
+      { "", "xyz", "" },
+      false,
+      "",
+      false,
+      "",
+      "//www.example.com/xyz/" },
+    { "", "", "", false, 0, { "" }, false, "", false, "", "/" },
+    { "", "", "", false, 0, { "", "xyz" }, false, "", false, "", "/xyz" },
+    { "", "", "", false, 0, { "", "xyz", "" }, false, "", false, "", "/xyz/" },
+    { "", "", "", false, 0, { "xyz", "" }, false, "", false, "", "xyz/" },
+    { "", "", "", false, 0, {}, true, "bar", false, "", "?bar" },
+    { "https", "", "", false, 0, {}, true, "bar", false, "", "https:?bar" },
+    { "https", "", "::1", false, 0, {}, false, "", false, "", "https://[::1]" },
+    { "http", "bob", "", false, 0, {}, true, "foobar", false, "", "http://bob@?foobar" },
+  };
+
+  for (const auto &test_vector : test_vectors) {
+    Uri::Uri uri;
+
+    uri.SetScheme(test_vector.scheme);
+    uri.SetUserName(test_vector.user_name);
+    uri.SetHost(test_vector.host);
+
+    if (test_vector.has_port) {
+      uri.SetPort(test_vector.port);
+    } else {
+      uri.ClearPort();
+    }
+
+    uri.SetPath(test_vector.path);
+    if (test_vector.has_query) { uri.SetQuery(test_vector.query); }
+    if (test_vector.has_fragment) { uri.SetFragment(test_vector.fragment); }
+
+    INFO(test_vector.uri_string);
+    REQUIRE(test_vector.uri_string == uri.GenerateString());
+  }
+}
+
+TEST_CASE("Fragment is present but empty", "Uri")// NOLINT
+{
+  Uri::Uri uri;
+
+  std::string fragment_string{ "https://www.example.com#" };
+  std::string no_fragment_string{ "https://www.example.com" };
+
+  REQUIRE(uri.ParseFromString(fragment_string));
+  REQUIRE(uri.HasFragment());
+  REQUIRE(uri.GetFragment().empty());
+  REQUIRE("https://www.example.com/#" == uri.GenerateString());
+  uri.ClearFragment();
+  REQUIRE("https://www.example.com/" == uri.GenerateString());
+
+  REQUIRE(uri.ParseFromString(no_fragment_string));
+  REQUIRE_FALSE(uri.HasFragment());
+  REQUIRE("https://www.example.com/" == uri.GenerateString());
+}
+
+TEST_CASE("Query is present but empty", "Uri")// NOLINT
+{
+  Uri::Uri uri;
+
+  std::string query_string{ "https://www.example.com?" };
+  std::string no_query_string{ "https://www.example.com" };
+
+  REQUIRE(uri.ParseFromString(query_string));
+  REQUIRE(uri.HasQuery());
+  REQUIRE(uri.GetQuery().empty());
+  REQUIRE("https://www.example.com/?" == uri.GenerateString());
+  uri.ClearQuery();
+  REQUIRE("https://www.example.com/" == uri.GenerateString());
+
+  REQUIRE(uri.ParseFromString(no_query_string));
+  REQUIRE_FALSE(uri.HasQuery());
+  REQUIRE("https://www.example.com/" == uri.GenerateString());
+}
+
+TEST_CASE("Generate String from URI with percent encoded character ", "Uri")
+{
+  struct TestVector
+  {
+    std::string scheme;
+    std::string user_name;
+    std::string host;
+    bool has_port;
+    u_int16_t port;
+    std::vector<std::string> path;
+    bool has_query;
+    std::string query;
+    bool has_fragment;
+    std::string fragment;
+    std::string uri_string;
+  };
+
+  const std::vector<TestVector> test_vectors{
+    { "http",
+      "b b",
+      "www.example.com",
+      true,
+      8080,
+      { "", "abc", "def" },
+      true,
+      "foobar",
+      true,
+      "ch2",
+      "http://b%20b@www.example.com:8080/abc/def?foobar#ch2" },
+    { "http",
+      "bob",
+      "www.e ample.com",
+      true,
+      8080,
+      { "", "abc", "def" },
+      true,
+      "foobar",
+      true,
+      "ch2",
+      "http://bob@www.e%20ample.com:8080/abc/def?foobar#ch2" },
+    { "http",
+      "bob",
+      "www.example.com",
+      true,
+      8080,
+      { "", "a c", "def" },
+      true,
+      "foobar",
+      true,
+      "ch2",
+      "http://bob@www.example.com:8080/a%20c/def?foobar#ch2" },
+    { "http",
+      "bob",
+      "www.example.com",
+      true,
+      8080,
+      { "", "abc", "def" },
+      true,
+      "foo ar",
+      true,
+      "ch2",
+      "http://bob@www.example.com:8080/abc/def?foo%20ar#ch2" },
+    { "http",
+      "bob",
+      "www.example.com",
+      true,
+      8080,
+      { "", "abc", "def" },
+      true,
+      "foobar",
+      true,
+      "c 2",
+      "http://bob@www.example.com:8080/abc/def?foobar#c%202" },
+    { "http",
+      "bob",
+      "fFfF::1",
+      true,
+      8080,
+      { "", "abc", "def" },
+      true,
+      "foobar",
+      true,
+      "c 2",
+      "http://bob@[ffff::1]:8080/abc/def?foobar#c%202" },
+  };
+
+  for (const auto &test_vector : test_vectors) {
+    Uri::Uri uri;
+
+    uri.SetScheme(test_vector.scheme);
+    uri.SetUserName(test_vector.user_name);
+    uri.SetHost(test_vector.host);
+
+    if (test_vector.has_port) {
+      uri.SetPort(test_vector.port);
+    } else {
+      uri.ClearPort();
+    }
+
+    uri.SetPath(test_vector.path);
+    if (test_vector.has_query) { uri.SetQuery(test_vector.query); }
+    if (test_vector.has_fragment) { uri.SetFragment(test_vector.fragment); }
+
+    INFO(test_vector.uri_string);
+    REQUIRE(test_vector.uri_string == uri.GenerateString());
+  }
 }

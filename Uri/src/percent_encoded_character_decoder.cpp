@@ -26,9 +26,7 @@ struct PercentEncodedCharacterDecoder::Implementation
   }
 };
 
-PercentEncodedCharacterDecoder::PercentEncodedCharacterDecoder()
-  : impl_(new Implementation)
-{}
+PercentEncodedCharacterDecoder::PercentEncodedCharacterDecoder() : impl_(new Implementation) {}
 
 PercentEncodedCharacterDecoder::~PercentEncodedCharacterDecoder() = default;
 
@@ -47,10 +45,7 @@ bool PercentEncodedCharacterDecoder::NextEncodedCharacter(char character)
   return false;
 }
 
-bool PercentEncodedCharacterDecoder::Done() const
-{
-  return impl_->digits_left == 0;
-}
+bool PercentEncodedCharacterDecoder::Done() const { return impl_->digits_left == 0; }
 
 char PercentEncodedCharacterDecoder::GetDecodedCharacter() const
 {

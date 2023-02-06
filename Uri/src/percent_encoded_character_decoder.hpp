@@ -9,13 +9,10 @@ class PercentEncodedCharacterDecoder
 {
 public:
   ~PercentEncodedCharacterDecoder();
-  PercentEncodedCharacterDecoder(
-    const PercentEncodedCharacterDecoder &) = delete;
+  PercentEncodedCharacterDecoder(const PercentEncodedCharacterDecoder &) = delete;
   PercentEncodedCharacterDecoder(PercentEncodedCharacterDecoder &&) noexcept;
-  PercentEncodedCharacterDecoder &operator=(
-    const PercentEncodedCharacterDecoder &) = delete;
-  PercentEncodedCharacterDecoder &operator=(
-    PercentEncodedCharacterDecoder &&) noexcept;
+  PercentEncodedCharacterDecoder &operator=(const PercentEncodedCharacterDecoder &) = delete;
+  PercentEncodedCharacterDecoder &operator=(PercentEncodedCharacterDecoder &&) noexcept;
 
   PercentEncodedCharacterDecoder();
   /* This method inputs the next encoded character-

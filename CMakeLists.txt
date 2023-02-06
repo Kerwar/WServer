@@ -132,12 +132,13 @@ add_subdirectory(configured_files)
 # Adding the src:
 # add_subdirectory(src)
 add_subdirectory(Uri)
+add_subdirectory(InternetMessage)
 
 # Adding the tests:
 option(ENABLE_TESTING "Enable the tests" ${PROJECT_IS_TOP_LEVEL})
 if(ENABLE_TESTING)
   enable_testing()
-  add_subdirectory(test)
+  #   add_subdirectory(test)
 endif()
 
 option(ENABLE_FUZZING "Enable the fuzz tests" OFF)
@@ -176,5 +177,7 @@ endif()
 set(CPACK_PACKAGE_FILE_NAME
     "${CMAKE_PROJECT_NAME}-${CMAKE_PROJECT_VERSION}-${GIT_SHORT_SHA}-${CMAKE_SYSTEM_NAME}-${CMAKE_BUILD_TYPE}-${CMAKE_CXX_COMPILER_ID}-${CMAKE_CXX_COMPILER_VERSION}"
 )
+
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 include(CPack)
